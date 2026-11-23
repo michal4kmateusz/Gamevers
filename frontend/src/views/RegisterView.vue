@@ -1,71 +1,119 @@
 
 <script setup>
 import { ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
+import { useAuthStore } from '../stores/authStore'
 
-const username = ref('')
+const router = useRouter()
+const authStore = useAuthStore()
+
+const name = ref('')
 const email = ref('')
 const password = ref('')
 const passwordConfirmation = ref('')
-const showPassword = ref(false)
-const error = ref('')
-const message = ref('')
 
-function handleRegister() {
-  error.value = ''
-  message.value = ''
+const showPassword = ref(false)
+const validationError = ref('')
+const serverError = ref('')
+
+async function handleRegister() {
+  validationError.value = ''
+  serverError.value = ''
 
   if (
-    !username.value.trim() ||
+    !name.value.trim() ||
     !email.value.trim() ||
     !password.value ||
     !passwordConfirmation.value
   ) {
-    error.value = 'Wypełnij wszystkie pola.'
+    validationError.value = 'Wypełnij wszystkie pola.'
     return
   }
 
-  if (username.value.trim().length < 3) {
-    error.value = 'Nazwa użytkownika musi mieć minimum 3 znaki.'
+  if (name.value.trim().length < 3) {
+    validationError.value =
+      'Nazwa użytkownika musi mieć minimum 3 znaki.'
     return
   }
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)) {
-    error.value = 'Podaj poprawny adres e-mail.'
+  if (name.value.trim().length > 50) {
+    validationError.value =
+      'Nazwa użytkownika może mieć maksymalnie 50 znaków.'
+    return
+  }
+
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+  if (!emailPattern.test(email.value.trim())) {
+    validationError.value = 'Podaj poprawny adres e-mail.'
     return
   }
 
   if (password.value.length < 8) {
-    error.value = 'Hasło musi mieć minimum 8 znaków.'
+    validationError.value =
+      'Hasło musi mieć minimum 8 znaków.'
     return
   }
 
   if (password.value !== passwordConfirmation.value) {
-    error.value = 'Podane hasła nie są identyczne.'
+    validationError.value =
+      'Podane hasła nie są identyczne.'
     return
   }
 
-  message.value =
-    'Formularz jest gotowy. Rejestrację uruchomimy po podłączeniu API Laravel.'
+  try {
+    await authStore.register({
+      name: name.value.trim(),
+      email: email.value.trim(),
+      password: password.value,
+      password_confirmation: passwordConfirmation.value
+    })
+
+    await router.push('/profile')
+  } catch (error) {
+    if (error.response?.status === 422) {
+      const errors = error.response.data?.errors
+
+      if (errors?.email?.length) {
+        serverError.value =
+          'Ten adres e-mail może być już zajęty lub jest nieprawidłowy.'
+      } else {
+        serverError.value =
+          'Nie udało się utworzyć konta. Sprawdź dane formularza.'
+      }
+    } else {
+      serverError.value =
+        'Nie udało się połączyć z serwerem. Spróbuj ponownie później.'
+    }
+  }
 }
 </script>
 
 <template>
-  <div class="register-page">
+  <main class="register-page">
     <div class="register-card">
-      <header class="register-header">
-        <h1>Dołącz do Gamevers</h1>
-        <p>Utwórz konto i zacznij budować swoją bibliotekę gier.</p>
-      </header>
+      <div class="register-header">
+        <span class="eyebrow">DOŁĄCZ DO GAMEVERS</span>
+
+        <h1>Utwórz konto</h1>
+
+        <p>
+          Załóż konto, aby tworzyć własną bibliotekę
+          gier i publikować recenzje.
+        </p>
+      </div>
 
       <form @submit.prevent="handleRegister">
         <div class="form-group">
-          <label for="username">Nazwa użytkownika</label>
+          <label for="register-name">
+            Nazwa użytkownika
+          </label>
+
           <input
-            id="username"
-            v-model="username"
+            id="register-name"
+            v-model="name"
             type="text"
-            placeholder="Twoja nazwa"
+            placeholder="Np. GameMaster"
             autocomplete="username"
             minlength="3"
             maxlength="50"
@@ -74,7 +122,10 @@ function handleRegister() {
         </div>
 
         <div class="form-group">
-          <label for="register-email">Adres e-mail</label>
+          <label for="register-email">
+            Adres e-mail
+          </label>
+
           <input
             id="register-email"
             v-model="email"
@@ -86,7 +137,10 @@ function handleRegister() {
         </div>
 
         <div class="form-group">
-          <label for="register-password">Hasło</label>
+          <label for="register-password">
+            Hasło
+          </label>
+
           <div class="password-field">
             <input
               id="register-password"
@@ -97,9 +151,11 @@ function handleRegister() {
               minlength="8"
               required
             />
+
             <button
               type="button"
-              class="toggle-password"
+              class="password-toggle"
+              :aria-label="showPassword ? 'Ukryj hasła' : 'Pokaż hasła'"
               @click="showPassword = !showPassword"
             >
               {{ showPassword ? 'Ukryj' : 'Pokaż' }}
@@ -108,9 +164,12 @@ function handleRegister() {
         </div>
 
         <div class="form-group">
-          <label for="confirm-password">Potwierdź hasło</label>
+          <label for="register-confirm-password">
+            Potwierdź hasło
+          </label>
+
           <input
-            id="confirm-password"
+            id="register-confirm-password"
             v-model="passwordConfirmation"
             :type="showPassword ? 'text' : 'password'"
             placeholder="Powtórz hasło"
@@ -119,25 +178,35 @@ function handleRegister() {
           />
         </div>
 
-        <p v-if="error" class="error" role="alert">
-          {{ error }}
-        </p>
+        <div
+          v-if="validationError || serverError"
+          class="error-message"
+          role="alert"
+        >
+          {{ validationError || serverError }}
+        </div>
 
-        <p v-if="message" class="message" role="status">
-          {{ message }}
-        </p>
-
-        <button type="submit" class="submit-button">
-          Utwórz konto
+        <button
+          type="submit"
+          class="submit-button"
+          :disabled="authStore.loading"
+        >
+          {{
+            authStore.loading
+              ? 'Tworzenie konta...'
+              : 'Utwórz konto'
+          }}
         </button>
       </form>
 
-      <p class="login-link">
+      <p class="login-text">
         Masz już konto?
-        <RouterLink to="/login">Zaloguj się</RouterLink>
+        <RouterLink to="/login">
+          Zaloguj się
+        </RouterLink>
       </p>
     </div>
-  </div>
+  </main>
 </template>
 
 <style scoped>
@@ -146,13 +215,13 @@ function handleRegister() {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 60px 16px;
+  padding: 64px 20px;
 }
 
 .register-card {
   width: 100%;
-  max-width: 460px;
-  padding: 36px;
+  max-width: 480px;
+  padding: 40px;
   background: #151B2B;
   border: 1px solid #293244;
   border-radius: 18px;
@@ -163,7 +232,17 @@ function handleRegister() {
   margin-bottom: 32px;
 }
 
+.eyebrow {
+  display: block;
+  margin-bottom: 12px;
+  color: #A78BFA;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+
 .register-header h1 {
+  color: #F8FAFC;
   font-size: 30px;
   margin-bottom: 12px;
 }
@@ -171,29 +250,31 @@ function handleRegister() {
 .register-header p {
   color: #94A3B8;
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.7;
 }
 
 .form-group {
-  margin-bottom: 20px;
+  margin-bottom: 22px;
 }
 
 .form-group label {
   display: block;
-  margin-bottom: 10px;
+  margin-bottom: 9px;
+  color: #CBD5E1;
   font-size: 14px;
   font-weight: 600;
 }
 
 .form-group input {
   width: 100%;
-  padding: 14px;
+  padding: 14px 16px;
   background: #0B0F19;
   border: 1px solid #293244;
-  border-radius: 10px;
+  border-radius: 9px;
   color: #F8FAFC;
   font-size: 14px;
   outline: none;
+  box-sizing: border-box;
 }
 
 .form-group input:focus {
@@ -208,7 +289,7 @@ function handleRegister() {
   padding-right: 85px;
 }
 
-.toggle-password {
+.password-toggle {
   position: absolute;
   right: 12px;
   top: 50%;
@@ -217,18 +298,18 @@ function handleRegister() {
   border: none;
   color: #A78BFA;
   cursor: pointer;
+  font-size: 12px;
 }
 
-.error {
-  color: #F87171;
-  margin-bottom: 16px;
-  font-size: 14px;
-}
-
-.message {
-  color: #22D3EE;
-  margin-bottom: 16px;
-  font-size: 14px;
+.error-message {
+  padding: 12px 14px;
+  margin-bottom: 20px;
+  background: #3B1D29;
+  border: 1px solid #7F1D1D;
+  border-radius: 9px;
+  color: #FCA5A5;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .submit-button {
@@ -236,32 +317,43 @@ function handleRegister() {
   padding: 15px;
   background: #8B5CF6;
   border: none;
-  border-radius: 10px;
-  color: white;
+  border-radius: 9px;
+  color: #FFFFFF;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
+  transition: background 0.2s;
 }
 
-.submit-button:hover {
+.submit-button:hover:not(:disabled) {
   background: #7C3AED;
 }
 
-.login-link {
+.submit-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.login-text {
   margin-top: 28px;
   text-align: center;
   color: #94A3B8;
   font-size: 14px;
 }
 
-.login-link a {
+.login-text a {
   color: #A78BFA;
-  font-weight: 600;
+  font-weight: 700;
+  text-decoration: none;
 }
 
 @media (max-width: 480px) {
   .register-card {
-    padding: 24px;
+    padding: 28px 20px;
+  }
+
+  .register-header h1 {
+    font-size: 26px;
   }
 }
 </style>
