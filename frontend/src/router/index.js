@@ -10,6 +10,7 @@ import GameDetailsView from '../views/GameDetailsView.vue'
 import LibraryView from '../views/LibraryView.vue'
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
+import ProfileView from '../views/ProfileView.vue'
 
 const routes = [
   {
@@ -58,6 +59,14 @@ const routes = [
     component: RegisterView,
     meta: {
       title: 'Rejestracja'
+    }
+  },
+  {
+    path: '/profile',
+    name: 'profile',
+    component: ProfileView,
+    meta: {
+      title: 'Mój profil'
     }
   }
 ]
