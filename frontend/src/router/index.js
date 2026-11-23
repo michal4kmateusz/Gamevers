@@ -6,6 +6,7 @@ import {
 
 import HomeView from '../views/HomeView.vue'
 import GamesView from '../views/GamesView.vue'
+import GameDetailsView from '../views/GameDetailsView.vue'
 
 const routes = [
   {
@@ -22,6 +23,14 @@ const routes = [
     component: GamesView,
     meta: {
       title: 'Katalog gier'
+    }
+  },
+  {
+    path: '/games/:id',
+    name: 'game-details',
+    component: GameDetailsView,
+    meta: {
+      title: 'Szczegóły gry'
     }
   }
 ]
