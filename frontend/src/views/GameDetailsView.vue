@@ -5,6 +5,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/authStore'
 import * as gamesService from '../services/gamesService'
 import * as libraryService from '../services/libraryService'
+import GameReviews from '../components/reviews/GameReviews.vue'
 
 const route = useRoute()
 const authStore = useAuthStore()
@@ -32,11 +33,13 @@ const genres = computed(() => {
 
   if (!Array.isArray(value)) return []
 
-  return value.map((genre) =>
-    typeof genre === 'string'
-      ? genre
-      : genre.name
-  ).filter(Boolean)
+  return value
+    .map((genre) =>
+      typeof genre === 'string'
+        ? genre
+        : genre?.name
+    )
+    .filter(Boolean)
 })
 
 const platforms = computed(() => {
@@ -44,11 +47,13 @@ const platforms = computed(() => {
 
   if (!Array.isArray(value)) return []
 
-  return value.map((platform) =>
-    typeof platform === 'string'
-      ? platform
-      : platform.name
-  ).filter(Boolean)
+  return value
+    .map((platform) =>
+      typeof platform === 'string'
+        ? platform
+        : platform?.name
+    )
+    .filter(Boolean)
 })
 
 const rating = computed(() => {
@@ -61,7 +66,7 @@ const rating = computed(() => {
   const number = Number(value)
 
   return Number.isFinite(number)
-    ? number.toFixed(1) + '/10'
+    ? `${number.toFixed(1)}/10`
     : 'Brak ocen'
 })
 
@@ -78,15 +83,24 @@ async function loadGame() {
     )
 
     game.value = response.data?.data ?? response.data
+
+    if (!game.value?.id) {
+      throw new Error('Brak danych gry')
+    }
   } catch (err) {
-    error.value = 'Nie udało się pobrać szczegółów gry.'
+    error.value =
+      'Nie udało się pobrać szczegółów gry.'
   } finally {
     loading.value = false
   }
 }
 
 async function addToLibrary() {
-  if (!authStore.isAuthenticated || !game.value) {
+  if (
+    !authStore.isAuthenticated ||
+    !game.value?.id ||
+    adding.value
+  ) {
     return
   }
 
@@ -103,10 +117,15 @@ async function addToLibrary() {
     successMessage.value =
       'Gra została dodana do Twojej biblioteki.'
   } catch (err) {
-    if (err.response?.status === 409 ||
-        err.response?.status === 422) {
+    if (
+      err.response?.status === 409 ||
+      err.response?.status === 422
+    ) {
       actionError.value =
         'Nie udało się dodać gry. Możliwe, że jest już w bibliotece.'
+    } else if (err.response?.status === 401) {
+      actionError.value =
+        'Sesja wygasła. Zaloguj się ponownie.'
     } else {
       actionError.value =
         'Nie udało się dodać gry do biblioteki.'
@@ -123,29 +142,40 @@ watch(gameId, loadGame, { immediate: true })
   <main class="details-page">
     <div class="details-container">
 
+      <!-- Ładowanie danych -->
       <div v-if="loading" class="state-message">
         Ładowanie szczegółów gry...
       </div>
 
+      <!-- Błąd pobierania -->
       <div
         v-else-if="error"
         class="state-message error"
         role="alert"
       >
         <p>{{ error }}</p>
-        <button type="button" @click="loadGame">
+
+        <button
+          type="button"
+          @click="loadGame"
+        >
           Spróbuj ponownie
         </button>
       </div>
 
+      <!-- Szczegóły gry -->
       <template v-else-if="game">
+
         <RouterLink to="/games" class="back-link">
           ← Wróć do katalogu
         </RouterLink>
 
         <div class="game-layout">
+
+          <!-- Główna część strony -->
           <div class="game-main">
 
+            <!-- Okładka -->
             <div class="cover-container">
               <img
                 v-if="game.cover_url"
@@ -154,11 +184,15 @@ watch(gameId, loadGame, { immediate: true })
                 class="game-cover"
               />
 
-              <div v-else class="cover-placeholder">
+              <div
+                v-else
+                class="cover-placeholder"
+              >
                 🎮
               </div>
             </div>
 
+            <!-- Informacje o grze -->
             <div class="game-information">
               <span class="eyebrow">
                 SZCZEGÓŁY GRY
@@ -166,7 +200,10 @@ watch(gameId, loadGame, { immediate: true })
 
               <h1>{{ game.title }}</h1>
 
-              <div class="tags">
+              <div
+                v-if="genres.length"
+                class="tags"
+              >
                 <span
                   v-for="genre in genres"
                   :key="genre"
@@ -183,7 +220,9 @@ watch(gameId, loadGame, { immediate: true })
                 }}
               </p>
 
+              <!-- Metadane -->
               <div class="metadata">
+
                 <div class="metadata-row">
                   <span>Ocena społeczności</span>
                   <strong>{{ rating }}</strong>
@@ -192,21 +231,30 @@ watch(gameId, loadGame, { immediate: true })
                 <div class="metadata-row">
                   <span>Data premiery</span>
                   <strong>
-                    {{ game.release_date || 'Brak danych' }}
+                    {{
+                      game.release_date ||
+                      'Brak danych'
+                    }}
                   </strong>
                 </div>
 
                 <div class="metadata-row">
                   <span>Producent</span>
                   <strong>
-                    {{ game.developer || 'Brak danych' }}
+                    {{
+                      game.developer ||
+                      'Brak danych'
+                    }}
                   </strong>
                 </div>
 
                 <div class="metadata-row">
                   <span>Wydawca</span>
                   <strong>
-                    {{ game.publisher || 'Brak danych' }}
+                    {{
+                      game.publisher ||
+                      'Brak danych'
+                    }}
                   </strong>
                 </div>
 
@@ -220,6 +268,7 @@ watch(gameId, loadGame, { immediate: true })
                     }}
                   </strong>
                 </div>
+
               </div>
             </div>
           </div>
@@ -233,6 +282,7 @@ watch(gameId, loadGame, { immediate: true })
             </p>
 
             <template v-if="authStore.isAuthenticated">
+
               <label for="game-status">
                 Wybierz status
               </label>
@@ -286,9 +336,12 @@ watch(gameId, loadGame, { immediate: true })
               >
                 Przejdź do mojej biblioteki
               </RouterLink>
+
             </template>
 
+            <!-- Niezalogowany użytkownik -->
             <template v-else>
+
               <p class="login-notice">
                 Zaloguj się, aby dodawać gry
                 do własnej kolekcji.
@@ -297,16 +350,28 @@ watch(gameId, loadGame, { immediate: true })
               <RouterLink
                 :to="{
                   name: 'login',
-                  query: { redirect: route.fullPath }
+                  query: {
+                    redirect: route.fullPath
+                  }
                 }"
                 class="primary-button"
               >
                 Zaloguj się
               </RouterLink>
+
             </template>
           </aside>
+
         </div>
+
+        <!-- NOWY MODUŁ: RECENZJE I OCENY -->
+        <GameReviews
+          :key="game.id"
+          :game-id="game.id"
+        />
+
       </template>
+
     </div>
   </main>
 </template>
@@ -330,6 +395,10 @@ watch(gameId, loadGame, { immediate: true })
   text-decoration: none;
   font-size: 14px;
   font-weight: 600;
+}
+
+.back-link:hover {
+  color: #C4B5FD;
 }
 
 .game-layout {
@@ -383,6 +452,7 @@ watch(gameId, loadGame, { immediate: true })
   margin: 12px 0 18px;
   font-size: 36px;
   line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .tags {
@@ -407,6 +477,7 @@ watch(gameId, loadGame, { immediate: true })
   line-height: 1.8;
   margin-bottom: 30px;
   white-space: pre-line;
+  overflow-wrap: anywhere;
 }
 
 .metadata {
@@ -510,6 +581,10 @@ watch(gameId, loadGame, { immediate: true })
   text-align: center;
   font-size: 13px;
   text-decoration: none;
+}
+
+.library-link:hover {
+  color: #C4B5FD;
 }
 
 .login-notice {
