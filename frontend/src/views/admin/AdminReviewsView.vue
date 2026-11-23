@@ -1,272 +1,690 @@
 
 <script setup>
-import { ref, computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import * as reviewsService from '../../services/reviewsService'
 
-const searchQuery = ref('')
+const reviews = ref([])
+const loading = ref(false)
+const deletingId = ref(null)
 
-// Dane demonstracyjne.
-// Później zastąpi je API Laravel.
-const reviews = ref([
-  {
-    id: 1,
-    username: 'PlayerOne',
-    game_id: 1,
-    game_title: 'Cyberpunk 2077',
-    rating: 9,
-    content: 'Świetny klimat i ciekawa fabuła.',
-    created_at: '2026-11-10'
-  },
-  {
-    id: 2,
-    username: 'GameMaster',
-    game_id: 3,
-    game_title: 'Minecraft',
-    rating: 10,
-    content: 'Ogromne możliwości kreatywnej zabawy.',
-    created_at: '2026-11-12'
-  },
-  {
-    id: 3,
-    username: 'RPGFan',
-    game_id: 2,
-    game_title: 'The Witcher 3: Wild Hunt',
-    rating: 10,
-    content: 'Bardzo dobra historia i świetne zadania.',
-    created_at: '2026-11-15'
-  }
-])
+const error = ref('')
+const successMessage = ref('')
+const search = ref('')
+const ratingFilter = ref('all')
+
+const totalReviews = ref(null)
+const hasMorePages = ref(false)
+const currentPage = ref(1)
 
 const filteredReviews = computed(() => {
-  const query = searchQuery.value.trim().toLowerCase()
+  const query = search.value.trim().toLowerCase()
 
-  return reviews.value.filter(review =>
-    review.username.toLowerCase().includes(query) ||
-    review.game_title.toLowerCase().includes(query) ||
-    review.content.toLowerCase().includes(query)
-  )
+  return reviews.value.filter((review) => {
+    const author = String(
+      review.user?.name || ''
+    ).toLowerCase()
+
+    const gameTitle = String(
+      review.game?.title || ''
+    ).toLowerCase()
+
+    const content = String(
+      review.content || review.comment || ''
+    ).toLowerCase()
+
+    const matchesSearch =
+      !query ||
+      author.includes(query) ||
+      gameTitle.includes(query) ||
+      content.includes(query)
+
+    const score = Number(review.rating)
+
+    let matchesRating = true
+
+    if (ratingFilter.value === 'high') {
+      matchesRating = score >= 8
+    } else if (ratingFilter.value === 'medium') {
+      matchesRating = score >= 5 && score < 8
+    } else if (ratingFilter.value === 'low') {
+      matchesRating = score >= 1 && score < 5
+    }
+
+    return matchesSearch && matchesRating
+  })
 })
 
-function formatDate(date) {
-  return new Intl.DateTimeFormat('pl-PL').format(
-    new Date(`${date}T12:00:00`)
+const averageRating = computed(() => {
+  if (reviews.value.length === 0) return null
+
+  const ratings = reviews.value
+    .map((review) => Number(review.rating))
+    .filter((value) =>
+      Number.isFinite(value) &&
+      value >= 1 &&
+      value <= 10
+    )
+
+  if (ratings.length === 0) return null
+
+  const sum = ratings.reduce(
+    (total, value) => total + value,
+    0
   )
+
+  return (sum / ratings.length).toFixed(1)
+})
+
+function getAuthor(review) {
+  return review.user?.name || 'Nieznany użytkownik'
 }
+
+function getGameTitle(review) {
+  return review.game?.title || 'Nieznana gra'
+}
+
+function getContent(review) {
+  return review.content || review.comment || ''
+}
+
+function formatDate(value) {
+  if (!value) return 'Brak daty'
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return 'Brak daty'
+  }
+
+  return date.toLocaleDateString('pl-PL')
+}
+
+function extractReviews(response) {
+  const payload = response.data
+
+  if (Array.isArray(payload)) {
+    return {
+      items: payload,
+      total: payload.length,
+      hasMore: false
+    }
+  }
+
+  const items = Array.isArray(payload?.data)
+    ? payload.data
+    : []
+
+  const totalValue = Number(
+    payload?.meta?.total ??
+    payload?.total
+  )
+
+  const total = Number.isFinite(totalValue)
+    ? totalValue
+    : null
+
+  const lastPage = Number(
+    payload?.meta?.last_page ??
+    payload?.last_page
+  )
+
+  const hasMore =
+    Number.isFinite(lastPage) &&
+    lastPage > currentPage.value
+
+  return { items, total, hasMore }
+}
+
+async function loadReviews(page = 1) {
+  loading.value = true
+  error.value = ''
+
+  try {
+    // Serwis obsługuje aktualnie listę recenzji
+    // bez parametrów paginacji.
+    const response =
+      await reviewsService.getAdminReviews()
+
+    currentPage.value = page
+
+    const result = extractReviews(response)
+
+    reviews.value = result.items
+    totalReviews.value = result.total
+    hasMorePages.value = result.hasMore
+  } catch (err) {
+    error.value =
+      'Nie udało się pobrać recenzji.'
+
+    reviews.value = []
+    totalReviews.value = null
+    hasMorePages.value = false
+  } finally {
+    loading.value = false
+  }
+}
+
+async function removeReview(review) {
+  const confirmed = window.confirm(
+    `Czy na pewno chcesz usunąć recenzję użytkownika "${getAuthor(review)}"?`
+  )
+
+  if (!confirmed) return
+
+  deletingId.value = review.id
+  error.value = ''
+  successMessage.value = ''
+
+  try {
+    await reviewsService.deleteAdminReview(
+      review.id
+    )
+
+    successMessage.value =
+      'Recenzja została usunięta.'
+
+    await loadReviews()
+  } catch (err) {
+    if (err.response?.status === 403) {
+      error.value =
+        'Nie masz uprawnień do usunięcia recenzji.'
+    } else if (err.response?.status === 401) {
+      error.value =
+        'Sesja wygasła. Zaloguj się ponownie.'
+    } else {
+      error.value =
+        'Nie udało się usunąć recenzji.'
+    }
+  } finally {
+    deletingId.value = null
+  }
+}
+
+onMounted(() => loadReviews())
 </script>
 
 <template>
-  <div class="admin-reviews-page">
-    <div class="container">
+  <main class="admin-reviews-page">
+    <div class="admin-container">
+
       <RouterLink to="/admin" class="back-link">
         ← Panel administratora
       </RouterLink>
 
+      <!-- Nagłówek -->
       <header class="page-header">
-        <h1>Moderacja recenzji</h1>
-        <p>
-          Przeglądaj opinie użytkowników
-          i zarządzaj treściami społeczności.
-        </p>
+        <div>
+          <span class="eyebrow">
+            GAMEVERS ADMIN
+          </span>
+
+          <h1>Moderacja recenzji</h1>
+
+          <p>
+            Przeglądaj opinie użytkowników
+            i zarządzaj treściami społeczności.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          class="refresh-button"
+          :disabled="loading"
+          @click="loadReviews()"
+        >
+          {{
+            loading
+              ? 'Odświeżanie...'
+              : 'Odśwież'
+          }}
+        </button>
       </header>
 
-      <div class="toolbar">
-        <input
-          v-model="searchQuery"
-          type="search"
-          placeholder="Szukaj recenzji..."
-          aria-label="Szukaj recenzji"
-        />
+      <!-- Statystyki -->
+      <section class="stats-grid">
+        <article class="stat-card">
+          <span>Łącznie recenzji</span>
 
-        <span class="reviews-count">
-          Liczba recenzji: {{ filteredReviews.length }}
-        </span>
-      </div>
+          <strong>
+            {{
+              totalReviews === null
+                ? '—'
+                : totalReviews
+            }}
+          </strong>
+        </article>
 
-      <div v-if="filteredReviews.length" class="reviews-list">
-        <article
-          v-for="review in filteredReviews"
-          :key="review.id"
-          class="review-card"
+        <article class="stat-card">
+          <span>Średnia ocena widocznych recenzji</span>
+
+          <strong>
+            {{
+              averageRating === null
+                ? '—'
+                : `${averageRating}/10`
+            }}
+          </strong>
+        </article>
+      </section>
+
+      <p
+        v-if="successMessage"
+        class="message success"
+        role="status"
+      >
+        {{ successMessage }}
+      </p>
+
+      <p
+        v-if="error"
+        class="message error"
+        role="alert"
+      >
+        {{ error }}
+      </p>
+
+      <!-- Filtry -->
+      <section class="filters-panel">
+        <div class="filter-field search-field">
+          <label for="review-search">
+            Wyszukaj recenzję
+          </label>
+
+          <input
+            id="review-search"
+            v-model="search"
+            type="search"
+            placeholder="Autor, gra lub treść..."
+          />
+        </div>
+
+        <div class="filter-field">
+          <label for="rating-filter">
+            Ocena
+          </label>
+
+          <select
+            id="rating-filter"
+            v-model="ratingFilter"
+          >
+            <option value="all">
+              Wszystkie oceny
+            </option>
+
+            <option value="high">
+              Wysokie (8–10)
+            </option>
+
+            <option value="medium">
+              Średnie (5–7)
+            </option>
+
+            <option value="low">
+              Niskie (1–4)
+            </option>
+          </select>
+        </div>
+      </section>
+
+      <!-- Lista -->
+      <section class="reviews-section">
+        <div class="section-heading">
+          <h2>Lista recenzji</h2>
+
+          <span>
+            Wyświetlane: {{ filteredReviews.length }}
+          </span>
+        </div>
+
+        <div
+          v-if="loading"
+          class="state-message"
         >
-          <div class="review-header">
-            <div>
-              <span class="username">
-                {{ review.username }}
-              </span>
+          Ładowanie recenzji...
+        </div>
 
-              <p class="game-title">
-                <RouterLink :to="`/games/${review.game_id}`">
-                  {{ review.game_title }}
-                </RouterLink>
-              </p>
+        <div
+          v-else-if="reviews.length === 0 && !error"
+          class="state-message"
+        >
+          Nie ma jeszcze recenzji do moderacji.
+        </div>
+
+        <div
+          v-else-if="filteredReviews.length === 0 && !error"
+          class="state-message"
+        >
+          Brak recenzji pasujących do filtrów.
+        </div>
+
+        <div v-else class="reviews-list">
+          <article
+            v-for="review in filteredReviews"
+            :key="review.id"
+            class="review-card"
+          >
+            <div class="review-top">
+              <div class="review-author">
+                <div
+                  class="author-avatar"
+                  aria-hidden="true"
+                >
+                  {{
+                    getAuthor(review)
+                      .charAt(0)
+                      .toUpperCase()
+                  }}
+                </div>
+
+                <div>
+                  <h3>{{ getAuthor(review) }}</h3>
+
+                  <p>
+                    {{ getGameTitle(review) }}
+                  </p>
+                </div>
+              </div>
+
+              <span class="rating-badge">
+                ★ {{ review.rating }}/10
+              </span>
             </div>
 
-            <span class="rating">
-              ★ {{ review.rating }} / 10
-            </span>
-          </div>
+            <p class="review-content">
+              {{ getContent(review) }}
+            </p>
 
-          <p class="review-content">
-            {{ review.content }}
-          </p>
+            <div class="review-footer">
+              <span class="review-date">
+                {{ formatDate(review.created_at) }}
+              </span>
 
-          <div class="review-footer">
-            <span class="date">
-              {{ formatDate(review.created_at) }}
-            </span>
+              <div class="review-actions">
+                <RouterLink
+                  v-if="review.game?.id"
+                  :to="`/games/${review.game.id}`"
+                  class="view-link"
+                >
+                  Zobacz grę
+                </RouterLink>
 
-            <button
-              type="button"
-              class="delete-button"
-              disabled
-            >
-              Usuń recenzję
-            </button>
-          </div>
-        </article>
-      </div>
+                <button
+                  type="button"
+                  class="delete-button"
+                  :disabled="deletingId !== null"
+                  @click="removeReview(review)"
+                >
+                  {{
+                    deletingId === review.id
+                      ? 'Usuwanie...'
+                      : 'Usuń recenzję'
+                  }}
+                </button>
+              </div>
+            </div>
+          </article>
+        </div>
 
-      <div v-else class="empty-state">
-        Nie znaleziono recenzji.
-      </div>
+        <p
+          v-if="hasMorePages"
+          class="pagination-notice"
+        >
+          API zwróciło tylko część recenzji.
+          Obsługę kolejnych stron dodamy
+          podczas integracji paginacji.
+        </p>
+      </section>
 
-      <p class="demo-notice">
-        To demonstracyjny moduł moderacji.
-        Usuwanie recenzji będzie dostępne
-        po podłączeniu API Laravel
-        i zabezpieczeniu uprawnień administratora.
-      </p>
     </div>
-  </div>
+  </main>
 </template>
 
 <style scoped>
 .admin-reviews-page {
-  min-height: 75vh;
-  padding: 48px 24px;
+  min-height: 80vh;
+  padding: 50px 20px 90px;
+  color: #F8FAFC;
 }
 
-.container {
-  max-width: 1100px;
+.admin-container {
+  max-width: 1200px;
   margin: 0 auto;
 }
 
 .back-link {
   display: inline-block;
-  margin-bottom: 32px;
+  margin-bottom: 28px;
   color: #A78BFA;
-  font-weight: 600;
+  font-size: 14px;
+  text-decoration: none;
 }
 
 .page-header {
-  margin-bottom: 32px;
-}
-
-.page-header h1 {
-  font-size: clamp(28px, 5vw, 42px);
-  margin-bottom: 12px;
-}
-
-.page-header p,
-.reviews-count,
-.demo-notice {
-  color: #94A3B8;
-}
-
-.toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 20px;
+  margin-bottom: 32px;
+}
+
+.eyebrow {
+  color: #A78BFA;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+
+.page-header h1 {
+  margin: 12px 0;
+  font-size: 34px;
+}
+
+.page-header p {
+  color: #94A3B8;
+  line-height: 1.7;
+}
+
+.refresh-button {
+  padding: 12px 18px;
+  background: #24203C;
+  border: 1px solid #443B73;
+  border-radius: 9px;
+  color: #C4B5FD;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.refresh-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
   margin-bottom: 28px;
 }
 
-.toolbar input {
-  width: 100%;
-  max-width: 450px;
-  padding: 14px 16px;
-  background: #151B2B;
-  border: 1px solid #293244;
-  border-radius: 10px;
-  color: #F8FAFC;
-  outline: none;
-}
-
-.toolbar input:focus {
-  border-color: #8B5CF6;
-}
-
-.reviews-list {
-  display: grid;
-  gap: 18px;
-}
-
-.review-card {
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
   padding: 24px;
   background: #151B2B;
   border: 1px solid #293244;
   border-radius: 14px;
 }
 
-.review-header {
+.stat-card span {
+  color: #94A3B8;
+  font-size: 13px;
+}
+
+.stat-card strong {
+  font-size: 29px;
+}
+
+.filters-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 230px;
+  gap: 18px;
+  padding: 24px;
+  margin-bottom: 28px;
+  background: #151B2B;
+  border: 1px solid #293244;
+  border-radius: 14px;
+}
+
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.filter-field label {
+  color: #CBD5E1;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.filter-field input,
+.filter-field select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 13px;
+  background: #0B0F19;
+  border: 1px solid #293244;
+  border-radius: 9px;
+  color: #F8FAFC;
+  font: inherit;
+  font-size: 14px;
+}
+
+.filter-field input:focus,
+.filter-field select:focus {
+  outline: none;
+  border-color: #8B5CF6;
+}
+
+.section-heading {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 16px;
   margin-bottom: 20px;
 }
 
-.username {
-  color: #A78BFA;
-  font-weight: 700;
+.section-heading h2 {
+  margin: 0;
+  font-size: 23px;
 }
 
-.game-title {
-  margin-top: 8px;
+.section-heading span {
+  color: #94A3B8;
+  font-size: 13px;
 }
 
-.game-title a {
-  color: #F8FAFC;
-  font-weight: 600;
+.reviews-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.game-title a:hover {
-  color: #A78BFA;
+.review-card {
+  padding: 25px;
+  background: #151B2B;
+  border: 1px solid #293244;
+  border-radius: 14px;
 }
 
-.rating {
-  color: #FBBF24;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.review-content {
-  color: #CBD5E1;
-  line-height: 1.8;
-  margin-bottom: 24px;
-  overflow-wrap: anywhere;
-}
-
+.review-top,
 .review-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  padding-top: 16px;
-  border-top: 1px solid #293244;
 }
 
-.date {
+.review-author {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.author-avatar {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  background: #8B5CF6;
+  border-radius: 12px;
+  font-weight: 800;
+}
+
+.review-author h3 {
+  margin: 0 0 7px;
+  font-size: 15px;
+}
+
+.review-author p {
+  margin: 0;
   color: #94A3B8;
   font-size: 13px;
 }
 
+.rating-badge {
+  color: #FBBF24;
+  font-size: 16px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.review-content {
+  margin: 24px 0;
+  color: #CBD5E1;
+  font-size: 14px;
+  line-height: 1.8;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.review-footer {
+  padding-top: 18px;
+  border-top: 1px solid #293244;
+}
+
+.review-date {
+  color: #94A3B8;
+  font-size: 12px;
+}
+
+.review-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.view-link {
+  color: #22D3EE;
+  font-size: 13px;
+  text-decoration: none;
+}
+
 .delete-button {
-  padding: 10px 14px;
+  padding: 11px 16px;
   background: #3B1D29;
   border: 1px solid #7F1D1D;
   border-radius: 8px;
-  color: #F87171;
-  font-weight: 600;
+  color: #FCA5A5;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .delete-button:disabled {
@@ -274,36 +692,78 @@ function formatDate(date) {
   cursor: not-allowed;
 }
 
-.empty-state {
-  padding: 48px 20px;
-  background: #151B2B;
-  border-radius: 14px;
-  text-align: center;
-  color: #94A3B8;
-}
-
-.demo-notice {
-  margin-top: 32px;
+.message {
+  padding: 14px 16px;
+  margin-bottom: 22px;
+  border-radius: 9px;
   font-size: 13px;
-  line-height: 1.7;
+  line-height: 1.6;
 }
 
-@media (max-width: 768px) {
+.message.success {
+  background: #10362B;
+  border: 1px solid #166534;
+  color: #6EE7B7;
+}
+
+.message.error {
+  background: #3B1D29;
+  border: 1px solid #7F1D1D;
+  color: #FCA5A5;
+}
+
+.state-message {
+  padding: 35px 20px;
+  background: #151B2B;
+  border: 1px solid #293244;
+  border-radius: 12px;
+  color: #94A3B8;
+  text-align: center;
+}
+
+.pagination-notice {
+  margin-top: 20px;
+  color: #FBBF24;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+@media (max-width: 800px) {
+  .page-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .filters-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .review-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 600px) {
   .admin-reviews-page {
-    padding: 32px 16px;
+    padding: 35px 16px 70px;
   }
 
-  .toolbar {
-    flex-direction: column;
-    align-items: stretch;
+  .page-header h1 {
+    font-size: 27px;
   }
 
-  .toolbar input {
-    max-width: none;
+  .stats-grid {
+    grid-template-columns: 1fr;
   }
 
-  .review-header {
-    flex-direction: column;
+  .filters-panel,
+  .review-card {
+    padding: 18px;
+  }
+
+  .review-top {
+    align-items: flex-start;
   }
 }
 </style>
