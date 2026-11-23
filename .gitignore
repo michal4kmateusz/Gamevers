@@ -1,1 +1,31 @@
 
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+vendor/
+
+# Vue / Vite
+frontend/dist/
+frontend/node_modules/
+
+# Laravel
+backend/vendor/
+backend/storage/logs/*
+backend/bootstrap/cache/*.php
+
+# IDE
+.idea/
+.vscode/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
