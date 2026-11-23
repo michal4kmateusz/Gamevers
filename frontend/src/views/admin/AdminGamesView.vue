@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import * as gamesService from '../../services/gamesService'
 import AppNotification from '../../components/ui/AppNotification.vue'
+import AppLoader from '../../components/ui/AppLoader.vue'
 
 const games = ref([])
 const loading = ref(false)
@@ -230,7 +231,6 @@ onMounted(loadGames)
         ← Panel administratora
       </RouterLink>
 
-      <!-- Nagłówek -->
       <header class="page-header">
         <div>
           <span class="eyebrow">GAMEVERS ADMIN</span>
@@ -252,23 +252,29 @@ onMounted(loadGames)
         </button>
       </header>
 
-      <!-- Powiadomienie o sukcesie -->
-      <AppNotification
+      <div
         v-if="successMessage"
-        type="success"
-        :message="successMessage"
-        @close="successMessage = ''"
-      />
+        class="notification-wrapper"
+      >
+        <AppNotification
+          type="success"
+          :message="successMessage"
+          @close="successMessage = ''"
+        />
+      </div>
 
-      <!-- Powiadomienie o błędzie -->
-      <AppNotification
+      <div
         v-if="error"
-        type="error"
-        :message="error"
-        @close="error = ''"
-      />
+        class="notification-wrapper"
+      >
+        <AppNotification
+          type="error"
+          :message="error"
+          @close="error = ''"
+        />
+      </div>
 
-      <!-- Formularz dodawania i edycji -->
+      <!-- Formularz -->
       <section v-if="showForm" class="form-panel">
         <div class="form-heading">
           <h2>
@@ -283,8 +289,8 @@ onMounted(loadGames)
             type="button"
             class="close-button"
             :disabled="saving"
-            @click="closeForm"
             aria-label="Zamknij formularz"
+            @click="closeForm"
           >
             ×
           </button>
@@ -386,8 +392,10 @@ onMounted(loadGames)
 
           </div>
 
-          <!-- Błąd formularza -->
-          <div v-if="formError" class="form-notification">
+          <div
+            v-if="formError"
+            class="form-notification"
+          >
             <AppNotification
               type="error"
               :message="formError"
@@ -445,8 +453,19 @@ onMounted(loadGames)
           aria-label="Wyszukaj grę po tytule"
         />
 
-        <div v-if="loading" class="state-message">
-          Ładowanie gier...
+        <!-- NOWOŚĆ: animowany loader -->
+        <AppLoader
+          v-if="loading"
+          size="medium"
+          message="Ładowanie gier..."
+          description="Pobieramy katalog gier z serwera Gamevers."
+        />
+
+        <div
+          v-else-if="error"
+          class="state-message"
+        >
+          Nie można wyświetlić katalogu gier.
         </div>
 
         <div
@@ -613,6 +632,10 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.notification-wrapper {
+  margin-bottom: 22px;
+}
+
 .form-panel,
 .catalog-panel {
   padding: 26px;
@@ -702,10 +725,6 @@ button:disabled {
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 24px;
-}
-
-.notification {
-  margin-bottom: 22px;
 }
 
 .search-input {
