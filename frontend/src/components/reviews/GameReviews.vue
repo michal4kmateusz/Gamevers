@@ -18,12 +18,19 @@ const authStore = useAuthStore()
 const reviews = ref([])
 const loading = ref(false)
 const submitting = ref(false)
+const processingId = ref(null)
+
 const error = ref('')
 const formError = ref('')
 const successMessage = ref('')
+const actionError = ref('')
 
 const rating = ref(0)
 const content = ref('')
+
+const editingId = ref(null)
+const editRating = ref(0)
+const editContent = ref('')
 
 const ratingOptions = Array.from(
   { length: 10 },
@@ -34,8 +41,26 @@ const isAuthenticated = computed(
   () => authStore.isAuthenticated
 )
 
-function getReviewId(review) {
-  return review.id
+const currentUserId = computed(
+  () => authStore.user?.id
+)
+
+const ownReview = computed(() => {
+  if (currentUserId.value == null) return null
+
+  return reviews.value.find(
+    (review) =>
+      String(review.user_id ?? review.user?.id) ===
+      String(currentUserId.value)
+  ) || null
+})
+
+function isOwnReview(review) {
+  if (currentUserId.value == null) return false
+
+  return String(
+    review.user_id ?? review.user?.id
+  ) === String(currentUserId.value)
 }
 
 function getAuthor(review) {
@@ -56,11 +81,18 @@ function formatDate(date) {
 
   const parsed = new Date(date)
 
-  if (Number.isNaN(parsed.getTime())) {
-    return ''
-  }
+  if (Number.isNaN(parsed.getTime())) return ''
 
   return parsed.toLocaleDateString('pl-PL')
+}
+
+function extractReviews(response) {
+  const payload = response.data
+
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.data)) return payload.data
+
+  return []
 }
 
 async function loadReviews() {
@@ -74,13 +106,7 @@ async function loadReviews() {
       props.gameId
     )
 
-    const payload = response.data
-
-    reviews.value = Array.isArray(payload)
-      ? payload
-      : Array.isArray(payload?.data)
-        ? payload.data
-        : []
+    reviews.value = extractReviews(response)
   } catch (err) {
     error.value =
       'Nie udało się pobrać recenzji tej gry.'
@@ -90,33 +116,63 @@ async function loadReviews() {
   }
 }
 
+function validateReview(value, text) {
+  if (
+    !Number.isInteger(value) ||
+    value < 1 ||
+    value > 10
+  ) {
+    return 'Wybierz ocenę od 1 do 10.'
+  }
+
+  if (text.length < 10) {
+    return 'Recenzja musi mieć minimum 10 znaków.'
+  }
+
+  if (text.length > 2000) {
+    return 'Recenzja może mieć maksymalnie 2000 znaków.'
+  }
+
+  return ''
+}
+
+function getRequestError(err, defaultMessage) {
+  const status = err.response?.status
+
+  if (status === 401) {
+    return 'Sesja wygasła. Zaloguj się ponownie.'
+  }
+
+  if (status === 403) {
+    return 'Nie masz uprawnień do tej operacji.'
+  }
+
+  if (status === 422) {
+    return 'Sprawdź poprawność podanych danych.'
+  }
+
+  return defaultMessage
+}
+
 async function submitReview() {
   formError.value = ''
   successMessage.value = ''
 
   if (!isAuthenticated.value) {
-    formError.value =
-      'Musisz się zalogować, aby dodać recenzję.'
+    formError.value = 'Zaloguj się, aby dodać recenzję.'
     return
   }
 
-  if (rating.value < 1 || rating.value > 10) {
-    formError.value =
-      'Wybierz ocenę od 1 do 10.'
+  if (ownReview.value) {
+    formError.value = 'Masz już recenzję tej gry.'
     return
   }
 
   const text = content.value.trim()
+  const validation = validateReview(rating.value, text)
 
-  if (text.length < 10) {
-    formError.value =
-      'Recenzja musi mieć minimum 10 znaków.'
-    return
-  }
-
-  if (text.length > 2000) {
-    formError.value =
-      'Recenzja może mieć maksymalnie 2000 znaków.'
+  if (validation) {
+    formError.value = validation
     return
   }
 
@@ -139,21 +195,107 @@ async function submitReview() {
 
     await loadReviews()
   } catch (err) {
-    if (err.response?.status === 409) {
-      formError.value =
-        'Dodałeś już recenzję tej gry.'
-    } else if (err.response?.status === 422) {
-      formError.value =
-        'Sprawdź poprawność recenzji.'
-    } else if (err.response?.status === 401) {
-      formError.value =
-        'Sesja wygasła. Zaloguj się ponownie.'
-    } else {
-      formError.value =
-        'Nie udało się opublikować recenzji.'
-    }
+    formError.value =
+      err.response?.status === 409
+        ? 'Dodałeś już recenzję tej gry.'
+        : getRequestError(
+            err,
+            'Nie udało się opublikować recenzji.'
+          )
   } finally {
     submitting.value = false
+  }
+}
+
+function startEditing(review) {
+  editingId.value = review.id
+  editRating.value = getRating(review)
+  editContent.value = getContent(review)
+  actionError.value = ''
+  successMessage.value = ''
+}
+
+function cancelEditing() {
+  editingId.value = null
+  editRating.value = 0
+  editContent.value = ''
+  actionError.value = ''
+}
+
+async function saveEdit(review) {
+  if (!isOwnReview(review)) return
+
+  const text = editContent.value.trim()
+  const validation = validateReview(
+    editRating.value,
+    text
+  )
+
+  if (validation) {
+    actionError.value = validation
+    return
+  }
+
+  processingId.value = review.id
+  actionError.value = ''
+  successMessage.value = ''
+
+  try {
+    await reviewsService.updateReview(
+      review.id,
+      {
+        rating: editRating.value,
+        content: text
+      }
+    )
+
+    cancelEditing()
+
+    successMessage.value =
+      'Recenzja została zaktualizowana.'
+
+    await loadReviews()
+  } catch (err) {
+    actionError.value = getRequestError(
+      err,
+      'Nie udało się zapisać zmian.'
+    )
+  } finally {
+    processingId.value = null
+  }
+}
+
+async function removeReview(review) {
+  if (!isOwnReview(review)) return
+
+  const confirmed = window.confirm(
+    'Czy na pewno chcesz usunąć swoją recenzję?'
+  )
+
+  if (!confirmed) return
+
+  processingId.value = review.id
+  actionError.value = ''
+  successMessage.value = ''
+
+  try {
+    await reviewsService.deleteReview(review.id)
+
+    if (editingId.value === review.id) {
+      cancelEditing()
+    }
+
+    successMessage.value =
+      'Recenzja została usunięta.'
+
+    await loadReviews()
+  } catch (err) {
+    actionError.value = getRequestError(
+      err,
+      'Nie udało się usunąć recenzji.'
+    )
+  } finally {
+    processingId.value = null
   }
 }
 
@@ -163,8 +305,10 @@ watch(
     reviews.value = []
     rating.value = 0
     content.value = ''
+    editingId.value = null
     successMessage.value = ''
     formError.value = ''
+    actionError.value = ''
     loadReviews()
   },
   { immediate: true }
@@ -184,12 +328,34 @@ watch(
       </span>
     </div>
 
-    <!-- Formularz dodawania recenzji -->
+    <!-- Komunikaty operacji -->
+    <p
+      v-if="successMessage"
+      class="feedback success"
+      role="status"
+    >
+      {{ successMessage }}
+    </p>
+
+    <p
+      v-if="actionError"
+      class="feedback error"
+      role="alert"
+    >
+      {{ actionError }}
+    </p>
+
+    <!-- Formularz dodawania -->
     <div class="review-form-card">
       <h3>Oceń tę grę</h3>
 
       <template v-if="isAuthenticated">
-        <form @submit.prevent="submitReview">
+        <p v-if="ownReview" class="info-message">
+          Masz już recenzję tej gry.
+          Możesz ją edytować lub usunąć poniżej.
+        </p>
+
+        <form v-else @submit.prevent="submitReview">
           <fieldset class="rating-fieldset">
             <legend>Twoja ocena</legend>
 
@@ -198,7 +364,6 @@ watch(
                 v-for="option in ratingOptions"
                 :key="option"
                 class="rating-option"
-                :class="{ selected: rating === option }"
               >
                 <input
                   v-model.number="rating"
@@ -211,16 +376,9 @@ watch(
                 <span>{{ option }}</span>
               </label>
             </div>
-
-            <p class="rating-help">
-              Wybierz ocenę od 1 do 10.
-            </p>
           </fieldset>
 
-          <label
-            for="review-content"
-            class="content-label"
-          >
+          <label for="review-content" class="content-label">
             Twoja recenzja
           </label>
 
@@ -259,14 +417,6 @@ watch(
             role="alert"
           >
             {{ formError }}
-          </p>
-
-          <p
-            v-if="successMessage"
-            class="feedback success"
-            role="status"
-          >
-            {{ successMessage }}
           </p>
         </form>
       </template>
@@ -311,38 +461,134 @@ watch(
         v-else-if="reviews.length === 0"
         class="state-message"
       >
-        <p>
-          Ta gra nie ma jeszcze recenzji.
-          Bądź pierwszą osobą, która ją oceni!
-        </p>
+        Ta gra nie ma jeszcze recenzji.
       </div>
 
-      <article
-        v-for="review in !loading && !error ? reviews : []"
-        :key="getReviewId(review)"
-        class="review-card"
-      >
-        <div class="review-header">
-          <div class="author">
-            <div class="author-avatar">
-              {{ getAuthor(review).charAt(0).toUpperCase() }}
+      <template v-else>
+        <article
+          v-for="review in reviews"
+          :key="review.id"
+          class="review-card"
+        >
+          <div class="review-header">
+            <div class="author">
+              <div class="author-avatar">
+                {{
+                  getAuthor(review)
+                    .charAt(0)
+                    .toUpperCase()
+                }}
+              </div>
+
+              <div>
+                <strong>{{ getAuthor(review) }}</strong>
+                <span>
+                  {{ formatDate(review.created_at) }}
+                </span>
+              </div>
             </div>
 
-            <div>
-              <strong>{{ getAuthor(review) }}</strong>
-              <span>{{ formatDate(review.created_at) }}</span>
-            </div>
+            <span class="review-rating">
+              ★ {{ getRating(review) }}/10
+            </span>
           </div>
 
-          <span class="review-rating">
-            ★ {{ getRating(review) }}/10
-          </span>
-        </div>
+          <!-- Tryb edycji -->
+          <form
+            v-if="editingId === review.id"
+            class="edit-form"
+            @submit.prevent="saveEdit(review)"
+          >
+            <fieldset class="rating-fieldset">
+              <legend>Zmień ocenę</legend>
 
-        <p class="review-content">
-          {{ getContent(review) }}
-        </p>
-      </article>
+              <div class="rating-options">
+                <label
+                  v-for="option in ratingOptions"
+                  :key="option"
+                  class="rating-option"
+                >
+                  <input
+                    v-model.number="editRating"
+                    type="radio"
+                    name="edit-rating"
+                    :value="option"
+                    :disabled="processingId !== null"
+                  />
+
+                  <span>{{ option }}</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <label
+              for="edit-content"
+              class="content-label"
+            >
+              Edytuj recenzję
+            </label>
+
+            <textarea
+              id="edit-content"
+              v-model="editContent"
+              rows="5"
+              minlength="10"
+              maxlength="2000"
+              :disabled="processingId !== null"
+              required
+            ></textarea>
+
+            <div class="review-actions">
+              <button
+                type="submit"
+                class="submit-button"
+                :disabled="processingId !== null"
+              >
+                Zapisz zmiany
+              </button>
+
+              <button
+                type="button"
+                class="secondary-button"
+                :disabled="processingId !== null"
+                @click="cancelEditing"
+              >
+                Anuluj
+              </button>
+            </div>
+          </form>
+
+          <!-- Zwykły widok recenzji -->
+          <template v-else>
+            <p class="review-content">
+              {{ getContent(review) }}
+            </p>
+
+            <div
+              v-if="isOwnReview(review)"
+              class="review-actions"
+            >
+              <button
+                type="button"
+                class="secondary-button"
+                :disabled="processingId !== null"
+                @click="startEditing(review)"
+              >
+                Edytuj
+              </button>
+
+              <button
+                type="button"
+                class="delete-button"
+                :disabled="processingId !== null"
+                @click="removeReview(review)"
+              >
+                Usuń
+              </button>
+            </div>
+          </template>
+        </article>
+      </template>
     </div>
   </section>
 </template>
@@ -453,13 +699,8 @@ watch(
   outline-offset: 3px;
 }
 
-.rating-help {
-  margin-top: 10px;
-  color: #94A3B8;
-  font-size: 12px;
-}
-
-.review-form-card textarea {
+.review-form-card textarea,
+.edit-form textarea {
   display: block;
   width: 100%;
   box-sizing: border-box;
@@ -474,7 +715,8 @@ watch(
   resize: vertical;
 }
 
-.review-form-card textarea:focus {
+.review-form-card textarea:focus,
+.edit-form textarea:focus {
   outline: none;
   border-color: #8B5CF6;
 }
@@ -506,18 +748,47 @@ watch(
   cursor: pointer;
 }
 
-.submit-button:hover:not(:disabled),
-.login-button:hover {
-  background: #7C3AED;
-}
-
 .submit-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
+.secondary-button,
+.delete-button {
+  padding: 11px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.secondary-button {
+  background: #24203C;
+  border: 1px solid #443B73;
+  color: #C4B5FD;
+}
+
+.delete-button {
+  background: #3B1D29;
+  border: 1px solid #7F1D1D;
+  color: #FCA5A5;
+}
+
+.secondary-button:disabled,
+.delete-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
 .feedback {
-  margin: 16px 0 0;
+  margin: 0 0 18px;
   font-size: 13px;
   line-height: 1.6;
 }
@@ -530,6 +801,7 @@ watch(
   color: #6EE7B7;
 }
 
+.info-message,
 .login-notice p {
   color: #94A3B8;
   line-height: 1.7;
@@ -600,6 +872,10 @@ watch(
   line-height: 1.8;
   white-space: pre-line;
   overflow-wrap: anywhere;
+}
+
+.edit-form {
+  margin-top: 22px;
 }
 
 .state-message {
