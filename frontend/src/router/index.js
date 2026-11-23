@@ -4,14 +4,20 @@ import {
   createWebHistory
 } from 'vue-router'
 
+import { useAuthStore } from '../stores/authStore'
+
+// Widoki publiczne
 import HomeView from '../views/HomeView.vue'
 import GamesView from '../views/GamesView.vue'
 import GameDetailsView from '../views/GameDetailsView.vue'
-import LibraryView from '../views/LibraryView.vue'
+
+// Widoki użytkownika
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import ProfileView from '../views/ProfileView.vue'
+import LibraryView from '../views/LibraryView.vue'
 
+// Widoki administratora
 import AdminDashboardView from '../views/admin/AdminDashboardView.vue'
 import AdminGamesView from '../views/admin/AdminGamesView.vue'
 import AdminReviewsView from '../views/admin/AdminReviewsView.vue'
@@ -20,41 +26,25 @@ const routes = [
   {
     path: '/',
     name: 'home',
-    component: HomeView,
-    meta: {
-      title: 'Strona główna'
-    }
+    component: HomeView
   },
   {
     path: '/games',
     name: 'games',
-    component: GamesView,
-    meta: {
-      title: 'Katalog gier'
-    }
+    component: GamesView
   },
   {
     path: '/games/:id',
     name: 'game-details',
     component: GameDetailsView,
-    meta: {
-      title: 'Szczegóły gry'
-    }
-  },
-  {
-    path: '/library',
-    name: 'library',
-    component: LibraryView,
-    meta: {
-      title: 'Moja biblioteka'
-    }
+    props: true
   },
   {
     path: '/login',
     name: 'login',
     component: LoginView,
     meta: {
-      title: 'Logowanie'
+      guestOnly: true
     }
   },
   {
@@ -62,7 +52,7 @@ const routes = [
     name: 'register',
     component: RegisterView,
     meta: {
-      title: 'Rejestracja'
+      guestOnly: true
     }
   },
   {
@@ -70,15 +60,24 @@ const routes = [
     name: 'profile',
     component: ProfileView,
     meta: {
-      title: 'Mój profil'
+      requiresAuth: true
+    }
+  },
+  {
+    path: '/library',
+    name: 'library',
+    component: LibraryView,
+    meta: {
+      requiresAuth: true
     }
   },
   {
     path: '/admin',
-    name: 'admin',
+    name: 'admin-dashboard',
     component: AdminDashboardView,
     meta: {
-      title: 'Panel administratora'
+      requiresAuth: true,
+      requiresAdmin: true
     }
   },
   {
@@ -86,7 +85,8 @@ const routes = [
     name: 'admin-games',
     component: AdminGamesView,
     meta: {
-      title: 'Zarządzanie grami'
+      requiresAuth: true,
+      requiresAdmin: true
     }
   },
   {
@@ -94,8 +94,13 @@ const routes = [
     name: 'admin-reviews',
     component: AdminReviewsView,
     meta: {
-      title: 'Moderacja recenzji'
+      requiresAuth: true,
+      requiresAdmin: true
     }
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    redirect: '/'
   }
 ]
 
@@ -107,8 +112,36 @@ const router = createRouter({
   }
 })
 
-router.afterEach((to) => {
-  document.title = `${to.meta.title || 'Gamevers'} | Gamevers`
+// Ochrona tras
+router.beforeEach((to) => {
+  const authStore = useAuthStore()
+
+  // Strony wymagające zalogowania
+  if (to.meta.requiresAuth && !authStore.isAuthenticated) {
+    return {
+      name: 'login',
+      query: {
+        redirect: to.fullPath
+      }
+    }
+  }
+
+  // Strony tylko dla administratora
+  if (to.meta.requiresAdmin && !authStore.isAdmin) {
+    return {
+      name: 'home'
+    }
+  }
+
+  // Zalogowany użytkownik nie musi
+  // ponownie otwierać logowania lub rejestracji
+  if (to.meta.guestOnly && authStore.isAuthenticated) {
+    return {
+      name: 'profile'
+    }
+  }
+
+  return true
 })
 
 export default router
