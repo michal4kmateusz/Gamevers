@@ -1,27 +1,39 @@
 
 <script setup>
 import { ref } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import {
+  RouterLink,
+  useRouter,
+  useRoute
+} from 'vue-router'
+
 import { useAuthStore } from '../stores/authStore'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
+// Dane formularza
 const email = ref('')
 const password = ref('')
+
+// Stan interfejsu
 const showPassword = ref(false)
 const validationError = ref('')
 const serverError = ref('')
 
+// Logowanie użytkownika
 async function handleLogin() {
   validationError.value = ''
   serverError.value = ''
 
+  // Sprawdzenie wymaganych pól
   if (!email.value.trim() || !password.value) {
     validationError.value = 'Wypełnij wszystkie pola.'
     return
   }
 
+  // Walidacja adresu e-mail
   const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
   if (!emailPattern.test(email.value.trim())) {
@@ -30,19 +42,40 @@ async function handleLogin() {
   }
 
   try {
+    // Logowanie przez Pinia i Laravel API
     await authStore.login({
       email: email.value.trim(),
       password: password.value
     })
 
-    await router.push('/profile')
+    // Odczyt strony, na którą użytkownik
+    // chciał wejść przed zalogowaniem
+    const requestedRedirect = route.query.redirect
+
+    // Ochrona przed przekierowaniem
+    // na zewnętrzną stronę
+    const safeRedirect =
+      typeof requestedRedirect === 'string' &&
+      requestedRedirect.startsWith('/') &&
+      !requestedRedirect.startsWith('//') &&
+      !requestedRedirect.startsWith('/\\')
+        ? requestedRedirect
+        : '/profile'
+
+    // Powrót na wybraną stronę
+    await router.replace(safeRedirect)
+
   } catch (error) {
+    // Obsługa błędów logowania
     if (error.response?.status === 422) {
       serverError.value =
         'Sprawdź poprawność wprowadzonych danych.'
     } else if (error.response?.status === 401) {
       serverError.value =
         'Nieprawidłowy adres e-mail lub hasło.'
+    } else if (error.response?.status === 429) {
+      serverError.value =
+        'Zbyt wiele prób logowania. Spróbuj ponownie później.'
     } else {
       serverError.value =
         'Nie udało się połączyć z serwerem. Spróbuj ponownie później.'
@@ -54,8 +87,12 @@ async function handleLogin() {
 <template>
   <main class="login-page">
     <div class="login-card">
+
+      <!-- Nagłówek formularza -->
       <div class="login-header">
-        <span class="eyebrow">GAMEVERS ACCOUNT</span>
+        <span class="eyebrow">
+          GAMEVERS ACCOUNT
+        </span>
 
         <h1>Witaj ponownie!</h1>
 
@@ -65,7 +102,10 @@ async function handleLogin() {
         </p>
       </div>
 
+      <!-- Formularz logowania -->
       <form @submit.prevent="handleLogin">
+
+        <!-- Adres e-mail -->
         <div class="form-group">
           <label for="login-email">
             Adres e-mail
@@ -77,10 +117,12 @@ async function handleLogin() {
             type="email"
             placeholder="twoj@email.pl"
             autocomplete="email"
+            maxlength="255"
             required
           />
         </div>
 
+        <!-- Hasło -->
         <div class="form-group">
           <label for="login-password">
             Hasło
@@ -99,7 +141,11 @@ async function handleLogin() {
             <button
               type="button"
               class="password-toggle"
-              :aria-label="showPassword ? 'Ukryj hasło' : 'Pokaż hasło'"
+              :aria-label="
+                showPassword
+                  ? 'Ukryj hasło'
+                  : 'Pokaż hasło'
+              "
               @click="showPassword = !showPassword"
             >
               {{ showPassword ? 'Ukryj' : 'Pokaż' }}
@@ -107,6 +153,7 @@ async function handleLogin() {
           </div>
         </div>
 
+        <!-- Komunikaty błędów -->
         <div
           v-if="validationError || serverError"
           class="error-message"
@@ -115,26 +162,37 @@ async function handleLogin() {
           {{ validationError || serverError }}
         </div>
 
+        <!-- Przycisk logowania -->
         <button
           type="submit"
           class="submit-button"
           :disabled="authStore.loading"
         >
-          {{ authStore.loading ? 'Logowanie...' : 'Zaloguj się' }}
+          <span v-if="authStore.loading">
+            Logowanie...
+          </span>
+
+          <span v-else>
+            Zaloguj się
+          </span>
         </button>
       </form>
 
+      <!-- Przejście do rejestracji -->
       <p class="register-text">
         Nie masz jeszcze konta?
+
         <RouterLink to="/register">
           Zarejestruj się
         </RouterLink>
       </p>
+
     </div>
   </main>
 </template>
 
 <style scoped>
+/* Główna sekcja */
 .login-page {
   min-height: 75vh;
   display: flex;
@@ -143,6 +201,7 @@ async function handleLogin() {
   padding: 64px 20px;
 }
 
+/* Karta logowania */
 .login-card {
   width: 100%;
   max-width: 460px;
@@ -150,8 +209,10 @@ async function handleLogin() {
   background: #151B2B;
   border: 1px solid #293244;
   border-radius: 18px;
+  box-sizing: border-box;
 }
 
+/* Nagłówek */
 .login-header {
   text-align: center;
   margin-bottom: 32px;
@@ -178,6 +239,7 @@ async function handleLogin() {
   line-height: 1.7;
 }
 
+/* Pola formularza */
 .form-group {
   margin-bottom: 22px;
 }
@@ -200,12 +262,18 @@ async function handleLogin() {
   font-size: 14px;
   outline: none;
   box-sizing: border-box;
+  transition: border-color 0.2s;
 }
 
 .form-group input:focus {
   border-color: #8B5CF6;
 }
 
+.form-group input::placeholder {
+  color: #64748B;
+}
+
+/* Hasło */
 .password-field {
   position: relative;
 }
@@ -224,8 +292,14 @@ async function handleLogin() {
   color: #A78BFA;
   cursor: pointer;
   font-size: 12px;
+  font-weight: 600;
 }
 
+.password-toggle:hover {
+  color: #C4B5FD;
+}
+
+/* Błędy */
 .error-message {
   padding: 12px 14px;
   margin-bottom: 20px;
@@ -237,6 +311,7 @@ async function handleLogin() {
   line-height: 1.6;
 }
 
+/* Przycisk logowania */
 .submit-button {
   width: 100%;
   padding: 15px;
@@ -259,6 +334,7 @@ async function handleLogin() {
   cursor: not-allowed;
 }
 
+/* Rejestracja */
 .register-text {
   margin-top: 28px;
   text-align: center;
@@ -272,7 +348,16 @@ async function handleLogin() {
   text-decoration: none;
 }
 
+.register-text a:hover {
+  color: #C4B5FD;
+}
+
+/* Responsywność */
 @media (max-width: 480px) {
+  .login-page {
+    padding: 40px 16px;
+  }
+
   .login-card {
     padding: 28px 20px;
   }
