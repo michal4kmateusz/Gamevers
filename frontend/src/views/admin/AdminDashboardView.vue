@@ -1,6 +1,7 @@
 
 <script setup>
 import { ref } from 'vue'
+import { RouterLink } from 'vue-router'
 
 // Dane demonstracyjne.
 // Później zastąpią je statystyki z API Laravel.
