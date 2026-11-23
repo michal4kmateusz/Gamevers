@@ -93,9 +93,19 @@ const modules = [
             <h3>{{ module.title }}</h3>
             <p>{{ module.description }}</p>
 
-            <span class="coming-soon">
-              Moduł w przygotowaniu
-            </span>
+          
+<RouterLink
+  v-if="module.path"
+  :to="module.path"
+  class="module-link"
+>
+  Otwórz moduł →
+</RouterLink>
+
+<span v-else class="coming-soon">
+  Moduł w przygotowaniu
+</span>
+            
           </article>
         </div>
       </section>
