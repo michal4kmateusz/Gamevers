@@ -3,44 +3,78 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import * as libraryService from '../services/libraryService'
+import AppLoader from '../components/ui/AppLoader.vue'
+import AppNotification from '../components/ui/AppNotification.vue'
 
-const games = ref([])
-const loading = ref(true)
-const error = ref('')
-const actionError = ref('')
+const library = ref([])
+const loading = ref(false)
+const updatingId = ref(null)
+const removingId = ref(null)
+
 const activeFilter = ref('all')
-const processingId = ref(null)
+const error = ref('')
+const successMessage = ref('')
 
-const filters = [
-  { value: 'all', label: 'Wszystkie' },
+const statuses = [
   { value: 'wishlist', label: 'Chcę zagrać' },
-  { value: 'playing', label: 'Gram' },
+  { value: 'playing', label: 'Gram obecnie' },
   { value: 'completed', label: 'Ukończone' },
   { value: 'dropped', label: 'Porzucone' }
 ]
 
-const statuses = filters.filter(
-  (filter) => filter.value !== 'all'
-)
+const filters = [
+  { value: 'all', label: 'Wszystkie' },
+  ...statuses
+]
 
-const filteredGames = computed(() => {
+const filteredLibrary = computed(() => {
   if (activeFilter.value === 'all') {
-    return games.value
+    return library.value
   }
 
-  return games.value.filter(
+  return library.value.filter(
     (item) => item.status === activeFilter.value
   )
 })
 
-function getStatusLabel(status) {
-  return statuses.find(
-    (item) => item.value === status
-  )?.label || 'Nieznany'
+const statusCounts = computed(() => {
+  const counts = {
+    all: library.value.length,
+    wishlist: 0,
+    playing: 0,
+    completed: 0,
+    dropped: 0
+  }
+
+  library.value.forEach((item) => {
+    if (Object.hasOwn(counts, item.status)) {
+      counts[item.status]++
+    }
+  })
+
+  return counts
+})
+
+function extractLibrary(response) {
+  const payload = response.data
+
+  if (Array.isArray(payload)) {
+    return payload
+  }
+
+  if (Array.isArray(payload?.data)) {
+    return payload.data
+  }
+
+  return []
 }
 
 function getGame(item) {
   return item.game || {}
+}
+
+function getGameId(item) {
+  return item.game_id ?? item.game?.id
 }
 
 function getGameTitle(item) {
@@ -51,8 +85,11 @@ function getGameCover(item) {
   return getGame(item).cover_url || ''
 }
 
-function getGameId(item) {
-  return item.game_id ?? getGame(item).id
+function getStatusLabel(status) {
+  return (
+    statuses.find((item) => item.value === status)?.label ||
+    'Nieznany status'
+  )
 }
 
 async function loadLibrary() {
@@ -61,38 +98,34 @@ async function loadLibrary() {
 
   try {
     const response = await libraryService.getLibrary()
-
-    const payload = response.data
-
-    games.value = Array.isArray(payload)
-      ? payload
-      : Array.isArray(payload?.data)
-        ? payload.data
-        : []
+    library.value = extractLibrary(response)
   } catch (err) {
+    library.value = []
+
     error.value =
-      'Nie udało się pobrać biblioteki gier.'
-    games.value = []
+      err.response?.status === 401
+        ? 'Sesja wygasła. Zaloguj się ponownie.'
+        : 'Nie udało się pobrać biblioteki.'
   } finally {
     loading.value = false
   }
 }
 
-async function updateStatus(item, newStatus) {
+async function changeStatus(item, event) {
   const gameId = getGameId(item)
+  const newStatus = event.target.value
+  const previousStatus = item.status
 
-  if (!gameId || processingId.value !== null) {
+  if (!gameId || newStatus === previousStatus) {
     return
   }
 
-  const oldStatus = item.status
+  updatingId.value = gameId
+  error.value = ''
+  successMessage.value = ''
 
-  if (oldStatus === newStatus) {
-    return
-  }
-
-  processingId.value = gameId
-  actionError.value = ''
+  // Aktualizacja optymistyczna interfejsu.
+  item.status = newStatus
 
   try {
     await libraryService.updateLibraryGame(
@@ -100,44 +133,48 @@ async function updateStatus(item, newStatus) {
       { status: newStatus }
     )
 
-    item.status = newStatus
+    successMessage.value =
+      `Zmieniono status gry "${getGameTitle(item)}" na "${getStatusLabel(newStatus)}".`
   } catch (err) {
-    actionError.value =
+    // Przy błędzie przywracamy poprzedni status.
+    item.status = previousStatus
+
+    error.value =
       'Nie udało się zmienić statusu gry.'
   } finally {
-    processingId.value = null
+    updatingId.value = null
   }
 }
 
 async function removeGame(item) {
   const gameId = getGameId(item)
 
-  if (!gameId || processingId.value !== null) {
-    return
-  }
+  if (!gameId) return
 
   const confirmed = window.confirm(
     `Czy na pewno chcesz usunąć "${getGameTitle(item)}" z biblioteki?`
   )
 
-  if (!confirmed) {
-    return
-  }
+  if (!confirmed) return
 
-  processingId.value = gameId
-  actionError.value = ''
+  removingId.value = gameId
+  error.value = ''
+  successMessage.value = ''
 
   try {
     await libraryService.removeLibraryGame(gameId)
 
-    games.value = games.value.filter(
-      (game) => getGameId(game) !== gameId
+    library.value = library.value.filter(
+      (entry) => getGameId(entry) !== gameId
     )
+
+    successMessage.value =
+      `Usunięto "${getGameTitle(item)}" z biblioteki.`
   } catch (err) {
-    actionError.value =
+    error.value =
       'Nie udało się usunąć gry z biblioteki.'
   } finally {
-    processingId.value = null
+    removingId.value = null
   }
 }
 
@@ -148,122 +185,233 @@ onMounted(loadLibrary)
   <main class="library-page">
     <div class="library-container">
 
-      <div class="page-heading">
-        <span class="eyebrow">TWOJA KOLEKCJA</span>
-        <h1>Moja biblioteka</h1>
-        <p>
-          Organizuj swoje gry, śledź postępy
-          i zarządzaj własną kolekcją.
-        </p>
+      <!-- Nagłówek -->
+      <header class="page-header">
+        <div>
+          <span class="eyebrow">
+            TWOJA KOLEKCJA
+          </span>
+
+          <h1>Moja biblioteka</h1>
+
+          <p>
+            Organizuj swoje gry, śledź postępy
+            i planuj kolejne przygody.
+          </p>
+        </div>
+
+        <RouterLink
+          to="/games"
+          class="browse-button"
+        >
+          + Odkryj gry
+        </RouterLink>
+      </header>
+
+      <!-- Statystyki -->
+      <section class="stats-grid">
+        <article class="stat-card">
+          <span>Wszystkie gry</span>
+          <strong>{{ statusCounts.all }}</strong>
+        </article>
+
+        <article class="stat-card">
+          <span>Gram obecnie</span>
+          <strong>{{ statusCounts.playing }}</strong>
+        </article>
+
+        <article class="stat-card">
+          <span>Ukończone</span>
+          <strong>{{ statusCounts.completed }}</strong>
+        </article>
+
+        <article class="stat-card">
+          <span>Chcę zagrać</span>
+          <strong>{{ statusCounts.wishlist }}</strong>
+        </article>
+      </section>
+
+      <!-- Powiadomienia -->
+      <div
+        v-if="successMessage"
+        class="notification-wrapper"
+      >
+        <AppNotification
+          type="success"
+          :message="successMessage"
+          @close="successMessage = ''"
+        />
+      </div>
+
+      <div
+        v-if="error"
+        class="notification-wrapper"
+      >
+        <AppNotification
+          type="error"
+          :message="error"
+          @close="error = ''"
+        />
       </div>
 
       <!-- Filtry -->
-      <div class="filters" aria-label="Filtry biblioteki">
+      <section
+        class="filters-section"
+        aria-label="Filtrowanie biblioteki"
+      >
         <button
           v-for="filter in filters"
           :key="filter.value"
           type="button"
           class="filter-button"
           :class="{
-            active: activeFilter === filter.value
+            'filter-button--active':
+              activeFilter === filter.value
           }"
           :aria-pressed="activeFilter === filter.value"
           @click="activeFilter = filter.value"
         >
           {{ filter.label }}
+
+          <span class="filter-count">
+            {{ statusCounts[filter.value] }}
+          </span>
         </button>
-      </div>
+      </section>
 
-      <!-- Błąd pobierania -->
-      <div v-if="error" class="message error" role="alert">
-        <p>{{ error }}</p>
+      <!-- Lista gier -->
+      <section class="library-section">
+        <div class="section-heading">
+          <h2>Zapisane gry</h2>
 
-        <button type="button" @click="loadLibrary">
-          Spróbuj ponownie
-        </button>
-      </div>
-
-      <!-- Ładowanie -->
-      <div v-else-if="loading" class="message">
-        <p>Ładowanie Twojej biblioteki...</p>
-      </div>
-
-      <template v-else>
-        <div
-          v-if="actionError"
-          class="message error"
-          role="alert"
-        >
-          {{ actionError }}
+          <button
+            type="button"
+            class="refresh-button"
+            :disabled="loading"
+            @click="loadLibrary"
+          >
+            Odśwież
+          </button>
         </div>
 
-        <!-- Pusta biblioteka -->
+        <!-- Animowane ładowanie -->
+        <AppLoader
+          v-if="loading"
+          size="large"
+          message="Ładowanie biblioteki..."
+          description="Pobieramy Twoje zapisane gry z Gamevers."
+        />
+
         <div
-          v-if="games.length === 0"
+          v-else-if="error && library.length === 0"
           class="empty-state"
         >
-          <span class="empty-icon">🎮</span>
-          <h2>Twoja biblioteka jest pusta</h2>
+          <div class="empty-icon">!</div>
+
+          <h3>Nie można pobrać biblioteki</h3>
+
           <p>
-            Odkrywaj gry i dodawaj je do swojej kolekcji.
+            Spróbuj ponownie za chwilę.
           </p>
 
-          <RouterLink to="/games" class="primary-link">
+          <button
+            type="button"
+            class="primary-button"
+            @click="loadLibrary"
+          >
+            Spróbuj ponownie
+          </button>
+        </div>
+
+        <div
+          v-else-if="library.length === 0"
+          class="empty-state"
+        >
+          <div class="empty-icon">🎮</div>
+
+          <h3>Twoja biblioteka jest pusta</h3>
+
+          <p>
+            Odkryj gry i dodaj pierwszą
+            do swojej kolekcji.
+          </p>
+
+          <RouterLink
+            to="/games"
+            class="primary-button"
+          >
             Przeglądaj gry
           </RouterLink>
         </div>
 
-        <!-- Brak wyników filtra -->
         <div
-          v-else-if="filteredGames.length === 0"
+          v-else-if="filteredLibrary.length === 0"
           class="empty-state"
         >
-          <span class="empty-icon">🔍</span>
-          <h2>Brak gier w tej kategorii</h2>
+          <div class="empty-icon">⌕</div>
+
+          <h3>Brak gier w tej kategorii</h3>
+
           <p>
-            Wybierz inny status, aby zobaczyć swoje gry.
+            Wybierz inny status,
+            aby zobaczyć zapisane gry.
           </p>
+
+          <button
+            type="button"
+            class="primary-button"
+            @click="activeFilter = 'all'"
+          >
+            Pokaż wszystkie
+          </button>
         </div>
 
-        <!-- Lista gier -->
-        <div v-else class="games-grid">
+        <div v-else class="library-grid">
           <article
-            v-for="item in filteredGames"
+            v-for="item in filteredLibrary"
             :key="getGameId(item)"
-            class="game-card"
+            class="library-card"
           >
             <RouterLink
+              v-if="getGameId(item)"
               :to="`/games/${getGameId(item)}`"
               class="cover-link"
             >
               <img
                 v-if="getGameCover(item)"
                 :src="getGameCover(item)"
-                :alt="`Okładka gry ${getGameTitle(item)}`"
+                :alt="`Okładka ${getGameTitle(item)}`"
                 class="game-cover"
-                loading="lazy"
               />
 
-              <div v-else class="cover-placeholder">
+              <div
+                v-else
+                class="cover-placeholder"
+                aria-hidden="true"
+              >
                 🎮
               </div>
             </RouterLink>
 
-            <div class="game-content">
-              <RouterLink
-                :to="`/games/${getGameId(item)}`"
-                class="game-title"
-              >
-                {{ getGameTitle(item) }}
-              </RouterLink>
+            <div
+              v-else
+              class="cover-link"
+            >
+              <div class="cover-placeholder">
+                🎮
+              </div>
+            </div>
+
+            <div class="card-content">
+              <h3>{{ getGameTitle(item) }}</h3>
 
               <span class="status-label">
                 {{ getStatusLabel(item.status) }}
               </span>
 
               <label
-                class="select-label"
                 :for="`status-${getGameId(item)}`"
+                class="select-label"
               >
                 Status gry
               </label>
@@ -271,8 +419,11 @@ onMounted(loadLibrary)
               <select
                 :id="`status-${getGameId(item)}`"
                 :value="item.status"
-                :disabled="processingId !== null"
-                @change="updateStatus(item, $event.target.value)"
+                :disabled="
+                  updatingId !== null ||
+                  removingId !== null
+                "
+                @change="changeStatus(item, $event)"
               >
                 <option
                   v-for="status in statuses"
@@ -286,19 +437,23 @@ onMounted(loadLibrary)
               <button
                 type="button"
                 class="remove-button"
-                :disabled="processingId !== null"
+                :disabled="
+                  updatingId !== null ||
+                  removingId !== null
+                "
                 @click="removeGame(item)"
               >
                 {{
-                  processingId === getGameId(item)
-                    ? 'Przetwarzanie...'
+                  removingId === getGameId(item)
+                    ? 'Usuwanie...'
                     : 'Usuń z biblioteki'
                 }}
               </button>
             </div>
           </article>
         </div>
-      </template>
+      </section>
+
     </div>
   </main>
 </template>
@@ -306,17 +461,21 @@ onMounted(loadLibrary)
 <style scoped>
 .library-page {
   min-height: 80vh;
-  padding: 60px 20px 90px;
+  padding: 55px 20px 90px;
   color: #F8FAFC;
 }
 
 .library-container {
-  max-width: 1200px;
+  max-width: 1250px;
   margin: 0 auto;
 }
 
-.page-heading {
-  margin-bottom: 32px;
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 25px;
+  margin-bottom: 35px;
 }
 
 .eyebrow {
@@ -326,17 +485,68 @@ onMounted(loadLibrary)
   letter-spacing: 2px;
 }
 
-.page-heading h1 {
+.page-header h1 {
   margin: 12px 0;
-  font-size: 36px;
+  font-size: 38px;
 }
 
-.page-heading p {
+.page-header p {
+  margin: 0;
   color: #94A3B8;
   line-height: 1.7;
 }
 
-.filters {
+.browse-button,
+.primary-button {
+  display: inline-block;
+  padding: 13px 19px;
+  background: #8B5CF6;
+  border: none;
+  border-radius: 9px;
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.browse-button:hover,
+.primary-button:hover {
+  background: #7C3AED;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 30px;
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  padding: 23px;
+  background: #151B2B;
+  border: 1px solid #293244;
+  border-radius: 14px;
+}
+
+.stat-card span {
+  color: #94A3B8;
+  font-size: 13px;
+}
+
+.stat-card strong {
+  font-size: 29px;
+}
+
+.notification-wrapper {
+  margin-bottom: 22px;
+}
+
+.filters-section {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -344,33 +554,70 @@ onMounted(loadLibrary)
 }
 
 .filter-button {
-  padding: 11px 17px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 16px;
   background: #151B2B;
   border: 1px solid #293244;
   border-radius: 9px;
-  color: #CBD5E1;
+  color: #94A3B8;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
 }
 
-.filter-button:hover {
+.filter-button--active {
+  background: #31234F;
   border-color: #8B5CF6;
+  color: #E9D5FF;
 }
 
-.filter-button.active {
-  background: #8B5CF6;
-  border-color: #8B5CF6;
-  color: #FFFFFF;
+.filter-count {
+  padding: 3px 7px;
+  background: #293244;
+  border-radius: 6px;
+  font-size: 11px;
 }
 
-.games-grid {
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.section-heading h2 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.refresh-button {
+  padding: 11px 16px;
+  background: #24203C;
+  border: 1px solid #443B73;
+  border-radius: 9px;
+  color: #C4B5FD;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.refresh-button:disabled,
+.remove-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.library-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns:
+    repeat(4, minmax(0, 1fr));
   gap: 20px;
 }
 
-.game-card {
+.library-card {
   min-width: 0;
   overflow: hidden;
   background: #151B2B;
@@ -380,53 +627,49 @@ onMounted(loadLibrary)
 
 .cover-link {
   display: block;
-  aspect-ratio: 3 / 4;
-  overflow: hidden;
-  background: #111827;
+  height: 220px;
+  background: #24203C;
 }
 
-.game-cover {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 0.3s;
-}
-
-.cover-link:hover .game-cover {
-  transform: scale(1.05);
-}
-
+.game-cover,
 .cover-placeholder {
   width: 100%;
   height: 100%;
+}
+
+.game-cover {
+  display: block;
+  object-fit: cover;
+}
+
+.cover-placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 50px;
+  font-size: 48px;
 }
 
-.game-content {
+.card-content {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 13px;
   padding: 18px;
 }
 
-.game-title {
-  color: #F8FAFC;
-  font-size: 17px;
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.game-title:hover {
-  color: #A78BFA;
+.card-content h3 {
+  margin: 0;
+  font-size: 16px;
+  overflow-wrap: anywhere;
 }
 
 .status-label {
-  color: #22D3EE;
-  font-size: 13px;
-  font-weight: 600;
+  align-self: flex-start;
+  padding: 6px 9px;
+  background: #31234F;
+  border-radius: 6px;
+  color: #C4B5FD;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .select-label {
@@ -434,15 +677,20 @@ onMounted(loadLibrary)
   font-size: 12px;
 }
 
-.game-content select {
+.card-content select {
   width: 100%;
   padding: 11px;
   background: #0B0F19;
   border: 1px solid #293244;
   border-radius: 8px;
   color: #F8FAFC;
+  font: inherit;
   font-size: 13px;
-  cursor: pointer;
+}
+
+.card-content select:focus {
+  outline: none;
+  border-color: #8B5CF6;
 }
 
 .remove-button {
@@ -456,88 +704,103 @@ onMounted(loadLibrary)
   cursor: pointer;
 }
 
-.remove-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.message,
 .empty-state {
-  padding: 48px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+  padding: 65px 25px;
   background: #151B2B;
   border: 1px solid #293244;
-  border-radius: 14px;
+  border-radius: 15px;
   text-align: center;
-  color: #94A3B8;
-}
-
-.message.error {
-  border-color: #7F1D1D;
-  color: #FCA5A5;
-  margin-bottom: 20px;
-}
-
-.message button,
-.primary-link {
-  display: inline-block;
-  margin-top: 18px;
-  padding: 12px 20px;
-  background: #8B5CF6;
-  border: none;
-  border-radius: 9px;
-  color: #FFFFFF;
-  font-size: 14px;
-  font-weight: 700;
-  text-decoration: none;
-  cursor: pointer;
 }
 
 .empty-icon {
-  display: block;
-  font-size: 44px;
-  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 65px;
+  height: 65px;
+  background: #24203C;
+  border-radius: 16px;
+  color: #C4B5FD;
+  font-size: 30px;
 }
 
-.empty-state h2 {
-  color: #F8FAFC;
-  margin-bottom: 12px;
+.empty-state h3 {
+  margin: 0;
+  font-size: 21px;
 }
 
 .empty-state p {
-  line-height: 1.6;
+  max-width: 390px;
+  margin: 0;
+  color: #94A3B8;
+  font-size: 14px;
+  line-height: 1.7;
 }
 
-@media (max-width: 1000px) {
-  .games-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+@media (max-width: 1050px) {
+  .library-grid {
+    grid-template-columns:
+      repeat(3, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 750px) {
+  .page-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .stats-grid {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+
+  .library-grid {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
   .library-page {
-    padding: 40px 16px 70px;
+    padding: 35px 16px 70px;
   }
 
-  .page-heading h1 {
+  .page-header h1 {
     font-size: 29px;
   }
 
-  .games-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .stat-card {
+    padding: 17px;
+  }
+
+  .stat-card strong {
+    font-size: 24px;
+  }
+
+  .library-grid {
     gap: 12px;
   }
 
-  .game-content {
-    padding: 12px;
+  .cover-link {
+    height: 165px;
   }
 
-  .game-title {
+  .card-content {
+    padding: 13px;
+  }
+
+  .card-content h3 {
     font-size: 14px;
   }
 }
 
-@media (max-width: 380px) {
-  .games-grid {
+@media (max-width: 360px) {
+  .library-grid {
     grid-template-columns: 1fr;
   }
 }
