@@ -40,9 +40,10 @@ const modules = [
     title: 'Moderacja recenzji',
     description: 'Przeglądanie i moderowanie opinii graczy.',
     icon: '⭐',
-    path: null
+    path: '/admin/reviews'
   }
 ]
+  
   
 </script>
 
