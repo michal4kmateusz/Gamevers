@@ -1,372 +1,529 @@
+HTML
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { useAuthStore } from '../../stores/authStore'
 import * as gamesService from '../../services/gamesService'
-import * as reviewsService from '../../services/reviewsService'
 
-const authStore = useAuthStore()
-
-const gamesCount = ref(null)
-const reviewsCount = ref(null)
-const usersCount = ref(null)
-
+const games = ref([])
 const loading = ref(false)
-const apiStatus = ref('checking')
-const error = ref('')
+const saving = ref(false)
+const deletingId = ref(null)
 
-const adminName = computed(() => {
-  return authStore.user?.name || 'Administrator'
+const error = ref('')
+const successMessage = ref('')
+const formError = ref('')
+const search = ref('')
+
+const showForm = ref(false)
+const editingId = ref(null)
+
+const emptyForm = () => ({
+  title: '',
+  description: '',
+  cover_url: '',
+  release_date: '',
+  developer: '',
+  publisher: ''
 })
 
-const stats = computed(() => [
-  {
-    label: 'Gry w katalogu',
-    value: gamesCount.value,
-    icon: '🎮'
-  },
-  {
-    label: 'Recenzje',
-    value: reviewsCount.value,
-    icon: '⭐'
-  },
-  {
-    label: 'Użytkownicy',
-    value: usersCount.value,
-    icon: '👥'
-  }
-])
+const form = ref(emptyForm())
 
-function extractCollection(response) {
+const filteredGames = computed(() => {
+  const query = search.value.trim().toLowerCase()
+
+  if (!query) return games.value
+
+  return games.value.filter((game) =>
+    String(game.title || '')
+      .toLowerCase()
+      .includes(query)
+  )
+})
+
+function extractGames(response) {
   const payload = response.data
 
-  if (Array.isArray(payload)) {
-    return {
-      count: payload.length,
-      complete: true
-    }
-  }
+  if (Array.isArray(payload)) return payload
+  if (Array.isArray(payload?.data)) return payload.data
 
-  if (Array.isArray(payload?.data)) {
-    const total = Number(payload.meta?.total)
-
-    if (Number.isFinite(total)) {
-      return {
-        count: total,
-        complete: true
-      }
-    }
-
-    // Bez informacji o całkowitej liczbie
-    // nie zgadujemy wyniku paginacji.
-    return {
-      count: null,
-      complete: false
-    }
-  }
-
-  return {
-    count: null,
-    complete: false
-  }
+  return []
 }
 
-async function loadDashboard() {
+async function loadGames() {
   loading.value = true
-  apiStatus.value = 'checking'
   error.value = ''
 
-  gamesCount.value = null
-  reviewsCount.value = null
-  usersCount.value = null
-
-  const results = await Promise.allSettled([
-    gamesService.getGames(),
-    reviewsService.getAdminReviews()
-  ])
-
-  const gamesResult = results[0]
-  const reviewsResult = results[1]
-
-  if (gamesResult.status === 'fulfilled') {
-    const collection = extractCollection(
-      gamesResult.value
-    )
-
-    gamesCount.value = collection.count
+  try {
+    const response = await gamesService.getGames()
+    games.value = extractGames(response)
+  } catch (err) {
+    error.value = 'Nie udało się pobrać katalogu gier.'
+    games.value = []
+  } finally {
+    loading.value = false
   }
-
-  if (reviewsResult.status === 'fulfilled') {
-    const collection = extractCollection(
-      reviewsResult.value
-    )
-
-    reviewsCount.value = collection.count
-  }
-
-  // Nie mamy jeszcze endpointu statystyk
-  // użytkowników, więc pozostaje brak danych.
-  usersCount.value = null
-
-  const allSuccessful = results.every(
-    (result) => result.status === 'fulfilled'
-  )
-
-  const anySuccessful = results.some(
-    (result) => result.status === 'fulfilled'
-  )
-
-  if (allSuccessful) {
-    apiStatus.value = 'connected'
-  } else if (anySuccessful) {
-    apiStatus.value = 'partial'
-    error.value =
-      'Nie udało się pobrać wszystkich danych.'
-  } else {
-    apiStatus.value = 'offline'
-    error.value =
-      'Nie udało się połączyć z API.'
-  }
-
-  loading.value = false
 }
 
-function formatStat(value) {
-  return value === null ? '—' : value
+function openCreateForm() {
+  editingId.value = null
+  form.value = emptyForm()
+  formError.value = ''
+  successMessage.value = ''
+  showForm.value = true
 }
 
-onMounted(loadDashboard)
+function openEditForm(game) {
+  editingId.value = game.id
+
+  form.value = {
+    title: game.title || '',
+    description: game.description || '',
+    cover_url: game.cover_url || '',
+    release_date: game.release_date
+      ? String(game.release_date).slice(0, 10)
+      : '',
+    developer: game.developer || '',
+    publisher: game.publisher || ''
+  }
+
+  formError.value = ''
+  successMessage.value = ''
+  showForm.value = true
+}
+
+function closeForm() {
+  if (saving.value) return
+
+  showForm.value = false
+  editingId.value = null
+  form.value = emptyForm()
+  formError.value = ''
+}
+
+function validateForm() {
+  if (form.value.title.trim().length < 2) {
+    return 'Tytuł musi mieć minimum 2 znaki.'
+  }
+
+  if (form.value.title.trim().length > 150) {
+    return 'Tytuł może mieć maksymalnie 150 znaków.'
+  }
+
+  if (form.value.description.trim().length < 10) {
+    return 'Opis musi mieć minimum 10 znaków.'
+  }
+
+  if (form.value.description.trim().length > 5000) {
+    return 'Opis może mieć maksymalnie 5000 znaków.'
+  }
+
+  if (
+    form.value.cover_url &&
+    !/^https?:\/\/.+/i.test(form.value.cover_url.trim())
+  ) {
+    return 'Podaj poprawny adres URL okładki.'
+  }
+
+  return ''
+}
+
+function buildPayload() {
+  return {
+    title: form.value.title.trim(),
+    description: form.value.description.trim(),
+    cover_url: form.value.cover_url.trim() || null,
+    release_date: form.value.release_date || null,
+    developer: form.value.developer.trim() || null,
+    publisher: form.value.publisher.trim() || null
+  }
+}
+
+async function saveGame() {
+  formError.value = ''
+  successMessage.value = ''
+
+  const validation = validateForm()
+
+  if (validation) {
+    formError.value = validation
+    return
+  }
+
+  saving.value = true
+
+  try {
+    const payload = buildPayload()
+
+    if (editingId.value !== null) {
+      await gamesService.updateGame(
+        editingId.value,
+        payload
+      )
+
+      successMessage.value =
+        'Dane gry zostały zaktualizowane.'
+    } else {
+      await gamesService.createGame(payload)
+
+      successMessage.value =
+        'Nowa gra została dodana do katalogu.'
+    }
+
+    showForm.value = false
+    editingId.value = null
+    form.value = emptyForm()
+
+    await loadGames()
+  } catch (err) {
+    if (err.response?.status === 422) {
+      formError.value =
+        'Sprawdź poprawność danych formularza.'
+    } else if (err.response?.status === 403) {
+      formError.value =
+        'Nie masz uprawnień do tej operacji.'
+    } else {
+      formError.value =
+        'Nie udało się zapisać gry.'
+    }
+  } finally {
+    saving.value = false
+  }
+}
+
+async function removeGame(game) {
+  const confirmed = window.confirm(
+    `Czy na pewno chcesz usunąć grę "${game.title}"?`
+  )
+
+  if (!confirmed) return
+
+  deletingId.value = game.id
+  error.value = ''
+  successMessage.value = ''
+
+  try {
+    await gamesService.deleteGame(game.id)
+
+    successMessage.value =
+      `Gra "${game.title}" została usunięta.`
+
+    await loadGames()
+  } catch (err) {
+    error.value =
+      err.response?.status === 403
+        ? 'Nie masz uprawnień do usunięcia gry.'
+        : 'Nie udało się usunąć gry.'
+  } finally {
+    deletingId.value = null
+  }
+}
+
+onMounted(loadGames)
 </script>
 
 <template>
-  <main class="admin-page">
+  <main class="admin-games-page">
     <div class="admin-container">
 
-      <!-- Nagłówek -->
-      <header class="admin-heading">
+      <RouterLink to="/admin" class="back-link">
+        ← Panel administratora
+      </RouterLink>
+
+      <header class="page-header">
         <div>
-          <span class="eyebrow">
-            GAMEVERS ADMIN
-          </span>
-
-          <h1>Panel administratora</h1>
-
+          <span class="eyebrow">GAMEVERS ADMIN</span>
+          <h1>Zarządzanie grami</h1>
           <p>
-            Witaj, {{ adminName }}!
-            Zarządzaj zawartością portalu Gamevers.
+            Dodawaj, edytuj i usuwaj gry
+            dostępne w katalogu.
           </p>
         </div>
 
-        <span class="admin-symbol" aria-hidden="true">
-          🛡️
-        </span>
+        <button
+          type="button"
+          class="primary-button"
+          @click="openCreateForm"
+        >
+          + Dodaj grę
+        </button>
       </header>
 
-      <!-- Statystyki -->
-      <section class="dashboard-section">
-        <div class="section-heading">
-          <h2>Statystyki portalu</h2>
+      <p
+        v-if="successMessage"
+        class="message success"
+        role="status"
+      >
+        {{ successMessage }}
+      </p>
+
+      <p
+        v-if="error"
+        class="message error"
+        role="alert"
+      >
+        {{ error }}
+      </p>
+
+      <!-- Formularz dodawania i edycji -->
+      <section v-if="showForm" class="form-panel">
+        <div class="form-heading">
+          <h2>
+            {{
+              editingId !== null
+                ? 'Edytuj grę'
+                : 'Dodaj nową grę'
+            }}
+          </h2>
 
           <button
             type="button"
-            class="refresh-button"
-            :disabled="loading"
-            @click="loadDashboard"
+            class="close-button"
+            :disabled="saving"
+            @click="closeForm"
+            aria-label="Zamknij formularz"
           >
-            {{
-              loading
-                ? 'Odświeżanie...'
-                : 'Odśwież dane'
-            }}
+            ×
           </button>
         </div>
 
-        <div class="stats-grid">
-          <article
-            v-for="stat in stats"
-            :key="stat.label"
-            class="stat-card"
+        <form @submit.prevent="saveGame">
+          <div class="form-grid">
+            <div class="field full-width">
+              <label for="game-title">
+                Tytuł gry *
+              </label>
+
+              <input
+                id="game-title"
+                v-model="form.title"
+                type="text"
+                minlength="2"
+                maxlength="150"
+                required
+                :disabled="saving"
+                placeholder="Np. Hollow Knight"
+              />
+            </div>
+
+            <div class="field full-width">
+              <label for="game-description">
+                Opis gry *
+              </label>
+
+              <textarea
+                id="game-description"
+                v-model="form.description"
+                rows="6"
+                minlength="10"
+                maxlength="5000"
+                required
+                :disabled="saving"
+                placeholder="Opisz grę..."
+              ></textarea>
+            </div>
+
+            <div class="field full-width">
+              <label for="game-cover">
+                URL okładki
+              </label>
+
+              <input
+                id="game-cover"
+                v-model="form.cover_url"
+                type="url"
+                :disabled="saving"
+                placeholder="https://example.com/cover.jpg"
+              />
+            </div>
+
+            <div class="field">
+              <label for="game-release">
+                Data premiery
+              </label>
+
+              <input
+                id="game-release"
+                v-model="form.release_date"
+                type="date"
+                :disabled="saving"
+              />
+            </div>
+
+            <div class="field">
+              <label for="game-developer">
+                Producent
+              </label>
+
+              <input
+                id="game-developer"
+                v-model="form.developer"
+                type="text"
+                maxlength="150"
+                :disabled="saving"
+                placeholder="Nazwa studia"
+              />
+            </div>
+
+            <div class="field">
+              <label for="game-publisher">
+                Wydawca
+              </label>
+
+              <input
+                id="game-publisher"
+                v-model="form.publisher"
+                type="text"
+                maxlength="150"
+                :disabled="saving"
+                placeholder="Nazwa wydawcy"
+              />
+            </div>
+          </div>
+
+          <p
+            v-if="formError"
+            class="message error"
+            role="alert"
           >
-            <span class="stat-icon" aria-hidden="true">
-              {{ stat.icon }}
-            </span>
+            {{ formError }}
+          </p>
 
-            <span class="stat-label">
-              {{ stat.label }}
-            </span>
-
-            <strong class="stat-value">
+          <div class="form-actions">
+            <button
+              type="submit"
+              class="primary-button"
+              :disabled="saving"
+            >
               {{
-                loading
-                  ? '...'
-                  : formatStat(stat.value)
+                saving
+                  ? 'Zapisywanie...'
+                  : editingId !== null
+                    ? 'Zapisz zmiany'
+                    : 'Dodaj grę'
               }}
-            </strong>
-          </article>
+            </button>
 
-          <article class="stat-card">
-            <span class="stat-icon" aria-hidden="true">
-              🌐
-            </span>
-
-            <span class="stat-label">
-              Status API
-            </span>
-
-            <strong
-              class="api-status"
-              :class="apiStatus"
+            <button
+              type="button"
+              class="secondary-button"
+              :disabled="saving"
+              @click="closeForm"
             >
-              <template v-if="apiStatus === 'checking'">
-                Sprawdzanie...
-              </template>
+              Anuluj
+            </button>
+          </div>
+        </form>
+      </section>
 
-              <template v-else-if="apiStatus === 'connected'">
-                Odpowiada
-              </template>
+      <!-- Wyszukiwanie -->
+      <section class="catalog-panel">
+        <div class="catalog-toolbar">
+          <h2>Katalog gier</h2>
 
-              <template v-else-if="apiStatus === 'partial'">
-                Częściowy dostęp
-              </template>
-
-              <template v-else>
-                Brak połączenia
-              </template>
-            </strong>
-          </article>
+          <button
+            type="button"
+            class="secondary-button"
+            :disabled="loading"
+            @click="loadGames"
+          >
+            Odśwież
+          </button>
         </div>
 
-        <p
-          v-if="error"
-          class="error-message"
-          role="alert"
+        <input
+          v-model="search"
+          type="search"
+          class="search-input"
+          placeholder="Wyszukaj grę po tytule..."
+          aria-label="Wyszukaj grę po tytule"
+        />
+
+        <div v-if="loading" class="state-message">
+          Ładowanie gier...
+        </div>
+
+        <div
+          v-else-if="games.length === 0"
+          class="state-message"
         >
-          {{ error }}
-        </p>
-
-        <p class="stats-note">
-          Statystyki są pobierane z dostępnych
-          endpointów. Brak danych oznaczamy
-          symbolem „—”.
-        </p>
-      </section>
-
-      <!-- Szybkie działania -->
-      <section class="dashboard-section">
-        <h2>Szybkie działania</h2>
-
-        <div class="actions-grid">
-
-          <RouterLink
-            to="/admin/games"
-            class="action-card"
-          >
-            <span
-              class="action-icon"
-              aria-hidden="true"
-            >
-              🎮
-            </span>
-
-            <div class="action-content">
-              <h3>Zarządzaj grami</h3>
-
-              <p>
-                Dodawaj, edytuj i usuwaj gry
-                dostępne w katalogu.
-              </p>
-            </div>
-
-            <span class="action-arrow">→</span>
-          </RouterLink>
-
-          <RouterLink
-            to="/admin/reviews"
-            class="action-card"
-          >
-            <span
-              class="action-icon"
-              aria-hidden="true"
-            >
-              ⭐
-            </span>
-
-            <div class="action-content">
-              <h3>Moderuj recenzje</h3>
-
-              <p>
-                Przeglądaj opinie graczy
-                i usuwaj niewłaściwe treści.
-              </p>
-            </div>
-
-            <span class="action-arrow">→</span>
-          </RouterLink>
-
-          <RouterLink
-            to="/games"
-            class="action-card"
-          >
-            <span
-              class="action-icon"
-              aria-hidden="true"
-            >
-              🔍
-            </span>
-
-            <div class="action-content">
-              <h3>Przeglądaj katalog</h3>
-
-              <p>
-                Zobacz portal z perspektywy
-                zwykłego użytkownika.
-              </p>
-            </div>
-
-            <span class="action-arrow">→</span>
-          </RouterLink>
-
-          <RouterLink
-            to="/profile"
-            class="action-card"
-          >
-            <span
-              class="action-icon"
-              aria-hidden="true"
-            >
-              👤
-            </span>
-
-            <div class="action-content">
-              <h3>Mój profil</h3>
-
-              <p>
-                Przejdź do informacji
-                o swoim koncie.
-              </p>
-            </div>
-
-            <span class="action-arrow">→</span>
-          </RouterLink>
-
+          Brak gier do wyświetlenia.
         </div>
-      </section>
 
-      <!-- Informacje -->
-      <section class="info-panel">
-        <h2>Informacje administracyjne</h2>
+        <div
+          v-else-if="filteredGames.length === 0"
+          class="state-message"
+        >
+          Nie znaleziono gier pasujących
+          do wyszukiwania.
+        </div>
 
-        <p>
-          Panel administratora jest przeznaczony
-          do zarządzania treściami Gamevers.
-        </p>
+        <div v-else class="games-list">
+          <article
+            v-for="game in filteredGames"
+            :key="game.id"
+            class="game-row"
+          >
+            <div class="game-info">
+              <img
+                v-if="game.cover_url"
+                :src="game.cover_url"
+                :alt="`Okładka ${game.title}`"
+                class="game-thumbnail"
+              />
 
-        <p>
-          Dostęp do funkcji administracyjnych
-          musi być dodatkowo kontrolowany
-          przez backend Laravel.
-        </p>
+              <div
+                v-else
+                class="thumbnail-placeholder"
+                aria-hidden="true"
+              >
+                🎮
+              </div>
+
+              <div class="game-text">
+                <h3>{{ game.title }}</h3>
+
+                <span>
+                  {{
+                    game.developer ||
+                    'Nie podano producenta'
+                  }}
+                </span>
+              </div>
+            </div>
+
+            <div class="game-actions">
+              <RouterLink
+                :to="`/games/${game.id}`"
+                class="view-link"
+              >
+                Zobacz
+              </RouterLink>
+
+              <button
+                type="button"
+                class="edit-button"
+                :disabled="deletingId !== null"
+                @click="openEditForm(game)"
+              >
+                Edytuj
+              </button>
+
+              <button
+                type="button"
+                class="delete-button"
+                :disabled="deletingId !== null"
+                @click="removeGame(game)"
+              >
+                {{
+                  deletingId === game.id
+                    ? 'Usuwanie...'
+                    : 'Usuń'
+                }}
+              </button>
+            </div>
+          </article>
+        </div>
       </section>
 
     </div>
@@ -374,9 +531,9 @@ onMounted(loadDashboard)
 </template>
 
 <style scoped>
-.admin-page {
+.admin-games-page {
   min-height: 80vh;
-  padding: 60px 20px 90px;
+  padding: 50px 20px 90px;
   color: #F8FAFC;
 }
 
@@ -385,12 +542,20 @@ onMounted(loadDashboard)
   margin: 0 auto;
 }
 
-.admin-heading {
+.back-link {
+  display: inline-block;
+  margin-bottom: 28px;
+  color: #A78BFA;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.page-header {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 44px;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 32px;
 }
 
 .eyebrow {
@@ -400,228 +565,286 @@ onMounted(loadDashboard)
   letter-spacing: 2px;
 }
 
-.admin-heading h1 {
+.page-header h1 {
   margin: 12px 0;
-  font-size: 36px;
+  font-size: 34px;
 }
 
-.admin-heading p {
+.page-header p {
   color: #94A3B8;
   line-height: 1.7;
 }
 
-.admin-symbol {
-  font-size: 56px;
-}
-
-.dashboard-section {
-  margin-bottom: 42px;
-}
-
-.dashboard-section h2,
-.info-panel h2 {
-  margin: 0 0 20px;
-  font-size: 23px;
-}
-
-.section-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
-.section-heading h2 {
-  margin: 0;
-}
-
-.refresh-button {
-  padding: 11px 16px;
-  background: #24203C;
-  border: 1px solid #443B73;
+.primary-button,
+.secondary-button,
+.edit-button,
+.delete-button {
+  padding: 12px 18px;
   border-radius: 9px;
-  color: #C4B5FD;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
 }
 
-.refresh-button:disabled {
+.primary-button {
+  background: #8B5CF6;
+  border: none;
+  color: #FFFFFF;
+}
+
+.primary-button:hover:not(:disabled) {
+  background: #7C3AED;
+}
+
+.secondary-button {
+  background: #24203C;
+  border: 1px solid #443B73;
+  color: #C4B5FD;
+}
+
+button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.stat-card {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 24px;
+.form-panel,
+.catalog-panel {
+  padding: 26px;
+  margin-bottom: 28px;
   background: #151B2B;
   border: 1px solid #293244;
-  border-radius: 14px;
+  border-radius: 16px;
 }
 
-.stat-icon {
-  font-size: 27px;
-}
-
-.stat-label {
-  color: #94A3B8;
-  font-size: 13px;
-}
-
-.stat-value {
-  font-size: 30px;
-  line-height: 1.2;
-}
-
-.api-status {
-  font-size: 15px;
-  line-height: 1.5;
-}
-
-.api-status.connected {
-  color: #6EE7B7;
-}
-
-.api-status.partial {
-  color: #FBBF24;
-}
-
-.api-status.offline {
-  color: #FCA5A5;
-}
-
-.api-status.checking {
-  color: #94A3B8;
-}
-
-.error-message {
-  margin-top: 18px;
-  padding: 14px;
-  background: #3B1D29;
-  border: 1px solid #7F1D1D;
-  border-radius: 9px;
-  color: #FCA5A5;
-  font-size: 13px;
-}
-
-.stats-note {
-  margin-top: 16px;
-  color: #94A3B8;
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.actions-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.action-card {
+.form-heading,
+.catalog-toolbar {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 18px;
-  padding: 25px;
-  background: #151B2B;
-  border: 1px solid #293244;
-  border-radius: 14px;
-  color: #F8FAFC;
-  text-decoration: none;
-  transition:
-    border-color 0.2s,
-    transform 0.2s;
+  gap: 16px;
+  margin-bottom: 24px;
 }
 
-.action-card:hover {
-  border-color: #8B5CF6;
-  transform: translateY(-2px);
-}
-
-.action-icon {
-  font-size: 28px;
-}
-
-.action-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.action-content h3 {
-  margin: 0 0 9px;
-  font-size: 17px;
-}
-
-.action-content p {
+.form-heading h2,
+.catalog-toolbar h2 {
   margin: 0;
-  color: #94A3B8;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.action-arrow {
-  color: #A78BFA;
   font-size: 22px;
 }
 
-.info-panel {
-  padding: 26px;
-  background: #151B2B;
-  border: 1px solid #293244;
-  border-radius: 14px;
-}
-
-.info-panel p {
+.close-button {
+  background: transparent;
+  border: none;
   color: #94A3B8;
+  font-size: 30px;
+  cursor: pointer;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.field label {
+  color: #CBD5E1;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.field input,
+.field textarea,
+.search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 13px;
+  background: #0B0F19;
+  border: 1px solid #293244;
+  border-radius: 9px;
+  color: #F8FAFC;
+  font: inherit;
   font-size: 14px;
-  line-height: 1.7;
 }
 
-@media (max-width: 1000px) {
-  .stats-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.field input:focus,
+.field textarea:focus,
+.search-input:focus {
+  outline: none;
+  border-color: #8B5CF6;
 }
 
-@media (max-width: 700px) {
-  .admin-page {
-    padding: 40px 16px 70px;
-  }
+.field textarea {
+  resize: vertical;
+  line-height: 1.6;
+}
 
-  .admin-heading h1 {
-    font-size: 29px;
-  }
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
 
-  .admin-symbol {
-    font-size: 38px;
-  }
+.message {
+  padding: 14px 16px;
+  margin-bottom: 22px;
+  border-radius: 9px;
+  font-size: 13px;
+  line-height: 1.6;
+}
 
-  .actions-grid {
-    grid-template-columns: 1fr;
-  }
+.message.success {
+  background: #10362B;
+  border: 1px solid #166534;
+  color: #6EE7B7;
+}
 
-  .section-heading {
+.message.error {
+  background: #3B1D29;
+  border: 1px solid #7F1D1D;
+  color: #FCA5A5;
+}
+
+.search-input {
+  margin-bottom: 22px;
+}
+
+.games-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.game-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 16px;
+  background: #0B0F19;
+  border: 1px solid #293244;
+  border-radius: 12px;
+}
+
+.game-info {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  min-width: 0;
+}
+
+.game-thumbnail,
+.thumbnail-placeholder {
+  width: 65px;
+  height: 65px;
+  flex-shrink: 0;
+  border-radius: 9px;
+}
+
+.game-thumbnail {
+  object-fit: cover;
+}
+
+.thumbnail-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #22203A;
+  font-size: 25px;
+}
+
+.game-text {
+  min-width: 0;
+}
+
+.game-text h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.game-text span {
+  color: #94A3B8;
+  font-size: 12px;
+}
+
+.game-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+}
+
+.view-link {
+  padding: 11px;
+  color: #22D3EE;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.edit-button {
+  background: #24203C;
+  border: 1px solid #443B73;
+  color: #C4B5FD;
+}
+
+.delete-button {
+  background: #3B1D29;
+  border: 1px solid #7F1D1D;
+  color: #FCA5A5;
+}
+
+.state-message {
+  padding: 35px 20px;
+  color: #94A3B8;
+  text-align: center;
+}
+
+@media (max-width: 800px) {
+  .page-header {
     align-items: flex-start;
     flex-direction: column;
   }
 
-  .action-card {
-    padding: 20px;
+  .game-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .game-actions {
+    width: 100%;
   }
 }
 
-@media (max-width: 400px) {
-  .stats-grid {
+@media (max-width: 600px) {
+  .admin-games-page {
+    padding: 35px 16px 70px;
+  }
+
+  .page-header h1 {
+    font-size: 27px;
+  }
+
+  .form-panel,
+  .catalog-panel {
+    padding: 18px;
+  }
+
+  .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .full-width {
+    grid-column: auto;
   }
 }
 </style>
