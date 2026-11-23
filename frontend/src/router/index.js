@@ -9,6 +9,7 @@ import GamesView from '../views/GamesView.vue'
 import GameDetailsView from '../views/GameDetailsView.vue'
 import LibraryView from '../views/LibraryView.vue'
 import LoginView from '../views/LoginView.vue'
+import RegisterView from '../views/RegisterView.vue'
 
 const routes = [
   {
@@ -49,6 +50,14 @@ const routes = [
     component: LoginView,
     meta: {
       title: 'Logowanie'
+    }
+  },
+  {
+    path: '/register',
+    name: 'register',
+    component: RegisterView,
+    meta: {
+      title: 'Rejestracja'
     }
   }
 ]
