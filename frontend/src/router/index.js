@@ -4,26 +4,29 @@ import {
   createWebHistory
 } from 'vue-router'
 
-const HomeView = {
-  template: `
-    <main class="home-page">
-      <h1>Witaj w Gamevers!</h1>
-      <p>Odkrywaj, oceniaj i zapisuj swoje ulubione gry.</p>
-    </main>
-  `
-}
+import HomeView from '../views/HomeView.vue'
 
 const routes = [
   {
     path: '/',
     name: 'home',
-    component: HomeView
+    component: HomeView,
+    meta: {
+      title: 'Strona główna'
+    }
   }
 ]
 
 const router = createRouter({
   history: createWebHistory(),
-  routes
+  routes,
+  scrollBehavior() {
+    return { top: 0 }
+  }
+})
+
+router.afterEach((to) => {
+  document.title = `${to.meta.title || 'Gamevers'} | Gamevers`
 })
 
 export default router
