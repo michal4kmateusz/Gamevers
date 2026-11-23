@@ -1,12 +1,18 @@
 
 import axios from 'axios'
 
-// Główny klient HTTP dla API Laravel.
-// Adres można zmienić przez zmienną VITE_API_URL.
+// Wspólny klient API dla aplikacji Gamevers.
+// Obsługuje uwierzytelnianie sesyjne Laravel Sanctum.
 const api = axios.create({
   baseURL:
     import.meta.env.VITE_API_URL ||
     'http://localhost:8000/api',
+
+  // Wysyłanie ciasteczek sesyjnych.
+  withCredentials: true,
+
+  // Obsługa tokenu CSRF przy żądaniach.
+  withXSRFToken: true,
 
   headers: {
     Accept: 'application/json',
