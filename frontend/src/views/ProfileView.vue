@@ -1,143 +1,194 @@
 
 <script setup>
-import { computed, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed } from 'vue'
+import { RouterLink, useRouter } from 'vue-router'
+import { useAuthStore } from '../stores/authStore'
 
-// Przykładowe dane.
-// Później pobierzemy je z API Laravel.
-const user = ref({
-  username: 'GameversPlayer',
-  joined_at: '2026-11-01'
+const router = useRouter()
+const authStore = useAuthStore()
+
+// Dane zalogowanego użytkownika
+const user = computed(() => authStore.user)
+
+const username = computed(() => {
+  return user.value?.name || 'Użytkownik'
 })
 
-const library = ref([
-  { id: 1, status: 'playing' },
-  { id: 2, status: 'wishlist' },
-  { id: 3, status: 'completed' },
-  { id: 4, status: 'completed' }
-])
+const email = computed(() => {
+  return user.value?.email || 'Brak adresu e-mail'
+})
 
-const reviews = ref([
-  {
-    id: 1,
-    game_id: 2,
-    game_title: 'The Witcher 3: Wild Hunt',
-    rating: 9,
-    content: 'Świetna fabuła i rozbudowany świat.'
-  },
-  {
-    id: 2,
-    game_id: 1,
-    game_title: 'Cyberpunk 2077',
-    rating: 8,
-    content: 'Ciekawy klimat i wciągające zadania.'
+const avatarLetter = computed(() => {
+  return username.value.charAt(0).toUpperCase()
+})
+
+const userRole = computed(() => {
+  return authStore.isAdmin
+    ? 'Administrator Gamevers'
+    : 'Użytkownik Gamevers'
+})
+
+// Statystyki pozostają zerowe, dopóki
+// nie podłączymy danych biblioteki i recenzji.
+const gamesCount = 0
+const reviewsCount = 0
+
+async function handleLogout() {
+  try {
+    await authStore.logout()
+    await router.push('/')
+  } catch (error) {
+    console.error('Błąd wylogowania:', error)
   }
-])
-
-const completedCount = computed(() =>
-  library.value.filter(game => game.status === 'completed').length
-)
-
-const averageRating = computed(() => {
-  if (!reviews.value.length) return '—'
-
-  const total = reviews.value.reduce(
-    (sum, review) => sum + review.rating, 0
-  )
-
-  return (total / reviews.value.length).toFixed(1)
-})
-
-const joinedDate = computed(() =>
-  new Intl.DateTimeFormat('pl-PL', {
-    month: 'long',
-    year: 'numeric'
-  }).format(new Date(user.value.joined_at))
-)
+}
 </script>
 
 <template>
-  <div class="profile-page">
+  <main class="profile-page">
     <div class="profile-container">
-      <header class="profile-header">
-        <div class="avatar" aria-hidden="true">
-          {{ user.username.charAt(0).toUpperCase() }}
+
+      <!-- Nagłówek -->
+      <div class="page-heading">
+        <span class="eyebrow">TWOJE KONTO</span>
+        <h1>Mój profil</h1>
+        <p>
+          Zarządzaj swoim kontem i odkrywaj
+          możliwości Gamevers.
+        </p>
+      </div>
+
+      <!-- Karta użytkownika -->
+      <section class="profile-card">
+        <div class="profile-header">
+          <div class="avatar">
+            {{ avatarLetter }}
+          </div>
+
+          <div class="user-info">
+            <h2>{{ username }}</h2>
+            <p class="user-email">{{ email }}</p>
+            <span class="role-label">
+              {{ userRole }}
+            </span>
+          </div>
         </div>
 
-        <div>
-          <h1>{{ user.username }}</h1>
-          <p>Gracz od {{ joinedDate }}</p>
-        </div>
-      </header>
-
-      <section class="stats-section">
-        <h2>Statystyki gracza</h2>
-
-        <div class="stats-grid">
+        <!-- Statystyki -->
+        <div class="profile-stats">
           <div class="stat-card">
-            <strong>{{ library.length }}</strong>
-            <span>Gier w bibliotece</span>
+            <span class="stat-icon">🎮</span>
+            <strong>{{ gamesCount }}</strong>
+            <span>Gry w bibliotece</span>
           </div>
 
           <div class="stat-card">
-            <strong>{{ completedCount }}</strong>
-            <span>Ukończonych gier</span>
-          </div>
-
-          <div class="stat-card">
-            <strong>{{ reviews.length }}</strong>
-            <span>Recenzji</span>
-          </div>
-
-          <div class="stat-card">
-            <strong>{{ averageRating }}</strong>
-            <span>Średnia ocen</span>
+            <span class="stat-icon">⭐</span>
+            <strong>{{ reviewsCount }}</strong>
+            <span>Opublikowane recenzje</span>
           </div>
         </div>
       </section>
 
-      <section class="reviews-section">
-        <h2>Moje recenzje</h2>
+      <!-- Dostępne funkcje -->
+      <section class="profile-section">
+        <h2>Moje konto</h2>
 
-        <div v-if="reviews.length" class="reviews-list">
-          <article
-            v-for="review in reviews"
-            :key="review.id"
-            class="review-card"
+        <div class="action-grid">
+          <RouterLink
+            to="/library"
+            class="action-card"
           >
-            <div class="review-header">
-              <h3>
-                <RouterLink :to="`/games/${review.game_id}`">
-                  {{ review.game_title }}
-                </RouterLink>
-              </h3>
-              <span class="rating">
-                ★ {{ review.rating }} / 10
-              </span>
+            <span class="action-icon">🎮</span>
+
+            <div>
+              <h3>Moja biblioteka</h3>
+              <p>
+                Przeglądaj zapisane gry
+                i zarządzaj ich statusami.
+              </p>
             </div>
 
-            <p>{{ review.content }}</p>
-          </article>
-        </div>
+            <span class="action-arrow">→</span>
+          </RouterLink>
 
-        <p v-else class="empty-state">
-          Nie masz jeszcze żadnych recenzji.
-        </p>
+          <RouterLink
+            to="/games"
+            class="action-card"
+          >
+            <span class="action-icon">🔍</span>
+
+            <div>
+              <h3>Odkrywaj gry</h3>
+              <p>
+                Znajdź nowe tytuły
+                i dodaj je do biblioteki.
+              </p>
+            </div>
+
+            <span class="action-arrow">→</span>
+          </RouterLink>
+
+          <RouterLink
+            v-if="authStore.isAdmin"
+            to="/admin"
+            class="action-card"
+          >
+            <span class="action-icon">⚙️</span>
+
+            <div>
+              <h3>Panel administratora</h3>
+              <p>
+                Zarządzaj grami,
+                użytkownikami i recenzjami.
+              </p>
+            </div>
+
+            <span class="action-arrow">→</span>
+          </RouterLink>
+        </div>
       </section>
 
-      <p class="demo-notice">
-        Profil zawiera dane demonstracyjne.
-        Informacje o zalogowanym użytkowniku
-        podłączymy później przez API Laravel.
-      </p>
+      <!-- Informacje o koncie -->
+      <section class="account-section">
+        <h2>Informacje o koncie</h2>
+
+        <div class="account-details">
+          <div class="detail-row">
+            <span>Nazwa użytkownika</span>
+            <strong>{{ username }}</strong>
+          </div>
+
+          <div class="detail-row">
+            <span>Adres e-mail</span>
+            <strong>{{ email }}</strong>
+          </div>
+
+          <div class="detail-row">
+            <span>Rola</span>
+            <strong>{{ userRole }}</strong>
+          </div>
+        </div>
+      </section>
+
+      <!-- Wylogowanie -->
+      <button
+        type="button"
+        class="logout-button"
+        :disabled="authStore.loading"
+        @click="handleLogout"
+      >
+        {{ authStore.loading ? 'Wylogowywanie...' : 'Wyloguj się' }}
+      </button>
+
     </div>
-  </div>
+  </main>
 </template>
 
 <style scoped>
 .profile-page {
-  min-height: 75vh;
-  padding: 60px 24px;
+  min-height: 80vh;
+  padding: 60px 20px 90px;
+  color: #F8FAFC;
 }
 
 .profile-container {
@@ -145,149 +196,246 @@ const joinedDate = computed(() =>
   margin: 0 auto;
 }
 
+.page-heading {
+  margin-bottom: 32px;
+}
+
+.eyebrow {
+  color: #A78BFA;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+
+.page-heading h1 {
+  margin: 12px 0;
+  font-size: 36px;
+}
+
+.page-heading p {
+  color: #94A3B8;
+  line-height: 1.7;
+}
+
+.profile-card {
+  padding: 32px;
+  background: #151B2B;
+  border: 1px solid #293244;
+  border-radius: 18px;
+  margin-bottom: 36px;
+}
+
 .profile-header {
   display: flex;
   align-items: center;
-  gap: 24px;
-  margin-bottom: 56px;
+  gap: 22px;
+  margin-bottom: 32px;
 }
 
 .avatar {
-  width: 90px;
-  height: 90px;
+  width: 80px;
+  height: 80px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border-radius: 20px;
   background: #8B5CF6;
-  color: white;
-  font-size: 36px;
+  color: #FFFFFF;
+  font-size: 34px;
+  font-weight: 800;
+}
+
+.user-info h2 {
+  margin: 0 0 8px;
+  font-size: 25px;
+}
+
+.user-email {
+  color: #94A3B8;
+  margin: 0 0 10px;
+  overflow-wrap: anywhere;
+}
+
+.role-label {
+  color: #A78BFA;
+  font-size: 13px;
   font-weight: 700;
 }
 
-.profile-header h1 {
-  font-size: clamp(28px, 5vw, 42px);
-  margin-bottom: 8px;
-}
-
-.profile-header p,
-.review-card p,
-.demo-notice {
-  color: #94A3B8;
-}
-
-.stats-section,
-.reviews-section {
-  margin-bottom: 48px;
-}
-
-.stats-section h2,
-.reviews-section h2 {
-  font-size: 24px;
-  margin-bottom: 24px;
-}
-
-.stats-grid {
+.profile-stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: 16px;
 }
 
 .stat-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
   padding: 24px;
-  background: #151B2B;
+  background: #0B0F19;
   border: 1px solid #293244;
-  border-radius: 14px;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.stat-icon {
+  font-size: 25px;
 }
 
 .stat-card strong {
-  color: #A78BFA;
-  font-size: 32px;
+  font-size: 28px;
 }
 
-.stat-card span {
+.stat-card span:last-child {
   color: #94A3B8;
   font-size: 13px;
 }
 
-.reviews-list {
+.profile-section,
+.account-section {
+  margin-bottom: 36px;
+}
+
+.profile-section h2,
+.account-section h2 {
+  margin-bottom: 20px;
+  font-size: 23px;
+}
+
+.action-grid {
   display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: 16px;
 }
 
-.review-card {
+.action-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
   padding: 24px;
   background: #151B2B;
   border: 1px solid #293244;
   border-radius: 14px;
-}
-
-.review-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 14px;
-}
-
-.review-header h3 {
-  font-size: 18px;
-}
-
-.review-header a {
   color: #F8FAFC;
+  text-decoration: none;
+  transition: border-color 0.2s;
 }
 
-.review-header a:hover {
-  color: #A78BFA;
+.action-card:hover {
+  border-color: #8B5CF6;
 }
 
-.rating {
-  color: #FBBF24;
-  font-weight: 700;
-  white-space: nowrap;
+.action-icon {
+  font-size: 28px;
 }
 
-.review-card p {
-  line-height: 1.7;
+.action-card div {
+  flex: 1;
 }
 
-.empty-state {
+.action-card h3 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+
+.action-card p {
+  margin: 0;
   color: #94A3B8;
-}
-
-.demo-notice {
-  padding-top: 24px;
-  border-top: 1px solid #293244;
   font-size: 13px;
   line-height: 1.6;
 }
 
-@media (max-width: 768px) {
+.action-arrow {
+  color: #A78BFA;
+  font-size: 22px;
+}
+
+.account-details {
+  background: #151B2B;
+  border: 1px solid #293244;
+  border-radius: 14px;
+  padding: 10px 24px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px 0;
+  border-bottom: 1px solid #293244;
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-row span {
+  color: #94A3B8;
+}
+
+.detail-row strong {
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.logout-button {
+  padding: 14px 24px;
+  background: #3B1D29;
+  border: 1px solid #7F1D1D;
+  border-radius: 10px;
+  color: #FCA5A5;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.logout-button:hover:not(:disabled) {
+  background: #4C1D2A;
+}
+
+.logout-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@media (max-width: 700px) {
   .profile-page {
-    padding: 40px 16px;
+    padding: 40px 16px 70px;
   }
 
-  .stats-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .page-heading h1 {
+    font-size: 29px;
+  }
+
+  .profile-card {
+    padding: 22px;
   }
 
   .profile-header {
-    gap: 16px;
-  }
-
-  .avatar {
-    width: 68px;
-    height: 68px;
-    font-size: 28px;
-  }
-
-  .review-header {
     flex-direction: column;
-    gap: 8px;
+    align-items: flex-start;
+  }
+
+  .action-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-row {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .detail-row strong {
+    text-align: left;
+  }
+}
+
+@media (max-width: 380px) {
+  .profile-stats {
+    grid-template-columns: 1fr;
   }
 }
 </style>
