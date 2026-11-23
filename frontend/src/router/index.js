@@ -11,8 +11,10 @@ import LibraryView from '../views/LibraryView.vue'
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import ProfileView from '../views/ProfileView.vue'
+
 import AdminDashboardView from '../views/admin/AdminDashboardView.vue'
 import AdminGamesView from '../views/admin/AdminGamesView.vue'
+import AdminReviewsView from '../views/admin/AdminReviewsView.vue'
 
 const routes = [
   {
@@ -85,6 +87,14 @@ const routes = [
     component: AdminGamesView,
     meta: {
       title: 'Zarządzanie grami'
+    }
+  },
+  {
+    path: '/admin/reviews',
+    name: 'admin-reviews',
+    component: AdminReviewsView,
+    meta: {
+      title: 'Moderacja recenzji'
     }
   }
 ]
