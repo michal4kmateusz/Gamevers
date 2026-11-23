@@ -3,6 +3,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import * as reviewsService from '../../services/reviewsService'
+import AppNotification from '../../components/ui/AppNotification.vue'
 
 const reviews = ref([])
 const loading = ref(false)
@@ -15,7 +16,6 @@ const ratingFilter = ref('all')
 
 const totalReviews = ref(null)
 const hasMorePages = ref(false)
-const currentPage = ref(1)
 
 const filteredReviews = computed(() => {
   const query = search.value.trim().toLowerCase()
@@ -56,8 +56,6 @@ const filteredReviews = computed(() => {
 })
 
 const averageRating = computed(() => {
-  if (reviews.value.length === 0) return null
-
   const ratings = reviews.value
     .map((review) => Number(review.rating))
     .filter((value) =>
@@ -115,38 +113,41 @@ function extractReviews(response) {
     ? payload.data
     : []
 
-  const totalValue = Number(
-    payload?.meta?.total ??
-    payload?.total
-  )
+  const totalValue =
+    payload?.meta?.total ?? payload?.total
 
-  const total = Number.isFinite(totalValue)
-    ? totalValue
-    : null
+  const total =
+    totalValue !== undefined &&
+    totalValue !== null &&
+    Number.isFinite(Number(totalValue))
+      ? Number(totalValue)
+      : null
 
   const lastPage = Number(
     payload?.meta?.last_page ??
     payload?.last_page
   )
 
+  const currentPage = Number(
+    payload?.meta?.current_page ??
+    payload?.current_page ??
+    1
+  )
+
   const hasMore =
     Number.isFinite(lastPage) &&
-    lastPage > currentPage.value
+    lastPage > currentPage
 
   return { items, total, hasMore }
 }
 
-async function loadReviews(page = 1) {
+async function loadReviews() {
   loading.value = true
   error.value = ''
 
   try {
-    // Serwis obsługuje aktualnie listę recenzji
-    // bez parametrów paginacji.
     const response =
       await reviewsService.getAdminReviews()
-
-    currentPage.value = page
 
     const result = extractReviews(response)
 
@@ -154,12 +155,14 @@ async function loadReviews(page = 1) {
     totalReviews.value = result.total
     hasMorePages.value = result.hasMore
   } catch (err) {
-    error.value =
-      'Nie udało się pobrać recenzji.'
-
     reviews.value = []
     totalReviews.value = null
     hasMorePages.value = false
+
+    error.value =
+      err.response?.status === 403
+        ? 'Nie masz uprawnień do przeglądania recenzji.'
+        : 'Nie udało się pobrać recenzji.'
   } finally {
     loading.value = false
   }
@@ -201,7 +204,7 @@ async function removeReview(review) {
   }
 }
 
-onMounted(() => loadReviews())
+onMounted(loadReviews)
 </script>
 
 <template>
@@ -212,7 +215,6 @@ onMounted(() => loadReviews())
         ← Panel administratora
       </RouterLink>
 
-      <!-- Nagłówek -->
       <header class="page-header">
         <div>
           <span class="eyebrow">
@@ -231,7 +233,7 @@ onMounted(() => loadReviews())
           type="button"
           class="refresh-button"
           :disabled="loading"
-          @click="loadReviews()"
+          @click="loadReviews"
         >
           {{
             loading
@@ -256,7 +258,7 @@ onMounted(() => loadReviews())
         </article>
 
         <article class="stat-card">
-          <span>Średnia ocena widocznych recenzji</span>
+          <span>Średnia ocena pobranych recenzji</span>
 
           <strong>
             {{
@@ -268,21 +270,28 @@ onMounted(() => loadReviews())
         </article>
       </section>
 
-      <p
+      <!-- Nowe powiadomienia -->
+      <div
         v-if="successMessage"
-        class="message success"
-        role="status"
+        class="notification-wrapper"
       >
-        {{ successMessage }}
-      </p>
+        <AppNotification
+          type="success"
+          :message="successMessage"
+          @close="successMessage = ''"
+        />
+      </div>
 
-      <p
+      <div
         v-if="error"
-        class="message error"
-        role="alert"
+        class="notification-wrapper"
       >
-        {{ error }}
-      </p>
+        <AppNotification
+          type="error"
+          :message="error"
+          @close="error = ''"
+        />
+      </div>
 
       <!-- Filtry -->
       <section class="filters-panel">
@@ -327,7 +336,7 @@ onMounted(() => loadReviews())
         </div>
       </section>
 
-      <!-- Lista -->
+      <!-- Lista recenzji -->
       <section class="reviews-section">
         <div class="section-heading">
           <h2>Lista recenzji</h2>
@@ -345,14 +354,21 @@ onMounted(() => loadReviews())
         </div>
 
         <div
-          v-else-if="reviews.length === 0 && !error"
+          v-else-if="error"
+          class="state-message"
+        >
+          Nie można wyświetlić listy recenzji.
+        </div>
+
+        <div
+          v-else-if="reviews.length === 0"
           class="state-message"
         >
           Nie ma jeszcze recenzji do moderacji.
         </div>
 
         <div
-          v-else-if="filteredReviews.length === 0 && !error"
+          v-else-if="filteredReviews.length === 0"
           class="state-message"
         >
           Brak recenzji pasujących do filtrów.
@@ -527,6 +543,10 @@ onMounted(() => loadReviews())
   font-size: 29px;
 }
 
+.notification-wrapper {
+  margin-bottom: 20px;
+}
+
 .filters-panel {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 230px;
@@ -690,26 +710,6 @@ onMounted(() => loadReviews())
 .delete-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-.message {
-  padding: 14px 16px;
-  margin-bottom: 22px;
-  border-radius: 9px;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.message.success {
-  background: #10362B;
-  border: 1px solid #166534;
-  color: #6EE7B7;
-}
-
-.message.error {
-  background: #3B1D29;
-  border: 1px solid #7F1D1D;
-  color: #FCA5A5;
 }
 
 .state-message {
