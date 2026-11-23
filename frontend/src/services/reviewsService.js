@@ -1,61 +1,56 @@
 
 import api from './api'
 
-// Pobranie recenzji konkretnej gry.
-export async function getGameReviews(gameId, params = {}) {
-  const response = await api.get(
-    `/games/${gameId}/reviews`,
-    { params }
-  )
+// ========================================
+// RECENZJE GRY - PUBLICZNE
+// ========================================
 
-  return response.data
+// Pobieranie recenzji konkretnej gry
+export function getGameReviews(gameId) {
+  return api.get(
+    `/games/${encodeURIComponent(gameId)}/reviews`
+  )
 }
 
-// Dodanie recenzji do gry.
-// Wymaga zalogowanego użytkownika.
-export async function createReview(gameId, reviewData) {
-  const response = await api.post(
-    `/games/${gameId}/reviews`,
-    reviewData
-  )
+// ========================================
+// RECENZJE - ZALOGOWANY UŻYTKOWNIK
+// ========================================
 
-  return response.data
+// Dodawanie recenzji do wybranej gry
+export function addGameReview(gameId, data) {
+  return api.post(
+    `/games/${encodeURIComponent(gameId)}/reviews`,
+    data
+  )
 }
 
-// Edycja własnej recenzji.
-export async function updateReview(reviewId, reviewData) {
-  const response = await api.put(
-    `/reviews/${reviewId}`,
-    reviewData
+// Edytowanie własnej recenzji
+export function updateReview(reviewId, data) {
+  return api.put(
+    `/reviews/${encodeURIComponent(reviewId)}`,
+    data
   )
-
-  return response.data
 }
 
-// Usunięcie własnej recenzji.
-export async function deleteReview(reviewId) {
-  const response = await api.delete(
-    `/reviews/${reviewId}`
+// Usuwanie własnej recenzji
+export function deleteReview(reviewId) {
+  return api.delete(
+    `/reviews/${encodeURIComponent(reviewId)}`
   )
-
-  return response.data
 }
 
-// Pobranie wszystkich recenzji dla administratora.
-export async function getAdminReviews(params = {}) {
-  const response = await api.get(
-    '/admin/reviews',
-    { params }
-  )
+// ========================================
+// PANEL ADMINISTRATORA
+// ========================================
 
-  return response.data
+// Pobieranie wszystkich recenzji
+export function getAdminReviews() {
+  return api.get('/admin/reviews')
 }
 
-// Usunięcie recenzji przez administratora.
-export async function deleteAdminReview(reviewId) {
-  const response = await api.delete(
-    `/admin/reviews/${reviewId}`
+// Usuwanie recenzji przez administratora
+export function deleteAdminReview(reviewId) {
+  return api.delete(
+    `/admin/reviews/${encodeURIComponent(reviewId)}`
   )
-
-  return response.data
 }
