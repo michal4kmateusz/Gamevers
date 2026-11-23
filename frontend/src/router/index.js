@@ -8,6 +8,7 @@ import HomeView from '../views/HomeView.vue'
 import GamesView from '../views/GamesView.vue'
 import GameDetailsView from '../views/GameDetailsView.vue'
 import LibraryView from '../views/LibraryView.vue'
+import LoginView from '../views/LoginView.vue'
 
 const routes = [
   {
@@ -40,6 +41,14 @@ const routes = [
     component: LibraryView,
     meta: {
       title: 'Moja biblioteka'
+    }
+  },
+  {
+    path: '/login',
+    name: 'login',
+    component: LoginView,
+    meta: {
+      title: 'Logowanie'
     }
   }
 ]
