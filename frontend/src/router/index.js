@@ -12,6 +12,7 @@ import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import ProfileView from '../views/ProfileView.vue'
 import AdminDashboardView from '../views/admin/AdminDashboardView.vue'
+import AdminGamesView from '../views/admin/AdminGamesView.vue'
 
 const routes = [
   {
@@ -76,6 +77,14 @@ const routes = [
     component: AdminDashboardView,
     meta: {
       title: 'Panel administratora'
+    }
+  },
+  {
+    path: '/admin/games',
+    name: 'admin-games',
+    component: AdminGamesView,
+    meta: {
+      title: 'Zarządzanie grami'
     }
   }
 ]
