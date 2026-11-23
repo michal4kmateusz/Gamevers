@@ -11,6 +11,7 @@ import LibraryView from '../views/LibraryView.vue'
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import ProfileView from '../views/ProfileView.vue'
+import AdminDashboardView from '../views/admin/AdminDashboardView.vue'
 
 const routes = [
   {
@@ -67,6 +68,14 @@ const routes = [
     component: ProfileView,
     meta: {
       title: 'Mój profil'
+    }
+  },
+  {
+    path: '/admin',
+    name: 'admin',
+    component: AdminDashboardView,
+    meta: {
+      title: 'Panel administratora'
     }
   }
 ]
