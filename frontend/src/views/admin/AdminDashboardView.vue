@@ -28,18 +28,22 @@ const stats = ref([
   }
 ])
 
+
 const modules = [
   {
     title: 'Zarządzanie grami',
     description: 'Dodawanie, edycja i usuwanie gier.',
-    icon: '🎮'
+    icon: '🎮',
+    path: '/admin/games'
   },
   {
     title: 'Moderacja recenzji',
     description: 'Przeglądanie i moderowanie opinii graczy.',
-    icon: '⭐'
+    icon: '⭐',
+    path: null
   }
 ]
+  
 </script>
 
 <template>
