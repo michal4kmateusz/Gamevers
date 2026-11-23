@@ -5,6 +5,7 @@ import {
 } from 'vue-router'
 
 import HomeView from '../views/HomeView.vue'
+import GamesView from '../views/GamesView.vue'
 
 const routes = [
   {
@@ -13,6 +14,14 @@ const routes = [
     component: HomeView,
     meta: {
       title: 'Strona główna'
+    }
+  },
+  {
+    path: '/games',
+    name: 'games',
+    component: GamesView,
+    meta: {
+      title: 'Katalog gier'
     }
   }
 ]
