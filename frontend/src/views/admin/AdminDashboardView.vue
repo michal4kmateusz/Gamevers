@@ -1,66 +1,186 @@
 
 <script setup>
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import { useAuthStore } from '../../stores/authStore'
+import * as gamesService from '../../services/gamesService'
+import * as reviewsService from '../../services/reviewsService'
 
-// Dane demonstracyjne.
-// Później zastąpią je statystyki z API Laravel.
-const stats = ref([
+const authStore = useAuthStore()
+
+const gamesCount = ref(null)
+const reviewsCount = ref(null)
+const usersCount = ref(null)
+
+const loading = ref(false)
+const apiStatus = ref('checking')
+const error = ref('')
+
+const adminName = computed(() => {
+  return authStore.user?.name || 'Administrator'
+})
+
+const stats = computed(() => [
   {
     label: 'Gry w katalogu',
-    value: 24,
+    value: gamesCount.value,
     icon: '🎮'
   },
   {
-    label: 'Użytkownicy',
-    value: 128,
-    icon: '👥'
-  },
-  {
     label: 'Recenzje',
-    value: 56,
+    value: reviewsCount.value,
     icon: '⭐'
   },
   {
-    label: 'Do moderacji',
-    value: 3,
-    icon: '📋'
+    label: 'Użytkownicy',
+    value: usersCount.value,
+    icon: '👥'
   }
 ])
 
+function extractCollection(response) {
+  const payload = response.data
 
-const modules = [
-  {
-    title: 'Zarządzanie grami',
-    description: 'Dodawanie, edycja i usuwanie gier.',
-    icon: '🎮',
-    path: '/admin/games'
-  },
-  {
-    title: 'Moderacja recenzji',
-    description: 'Przeglądanie i moderowanie opinii graczy.',
-    icon: '⭐',
-    path: '/admin/reviews'
+  if (Array.isArray(payload)) {
+    return {
+      count: payload.length,
+      complete: true
+    }
   }
-]
-  
-  
+
+  if (Array.isArray(payload?.data)) {
+    const total = Number(payload.meta?.total)
+
+    if (Number.isFinite(total)) {
+      return {
+        count: total,
+        complete: true
+      }
+    }
+
+    // Bez informacji o całkowitej liczbie
+    // nie zgadujemy wyniku paginacji.
+    return {
+      count: null,
+      complete: false
+    }
+  }
+
+  return {
+    count: null,
+    complete: false
+  }
+}
+
+async function loadDashboard() {
+  loading.value = true
+  apiStatus.value = 'checking'
+  error.value = ''
+
+  gamesCount.value = null
+  reviewsCount.value = null
+  usersCount.value = null
+
+  const results = await Promise.allSettled([
+    gamesService.getGames(),
+    reviewsService.getAdminReviews()
+  ])
+
+  const gamesResult = results[0]
+  const reviewsResult = results[1]
+
+  if (gamesResult.status === 'fulfilled') {
+    const collection = extractCollection(
+      gamesResult.value
+    )
+
+    gamesCount.value = collection.count
+  }
+
+  if (reviewsResult.status === 'fulfilled') {
+    const collection = extractCollection(
+      reviewsResult.value
+    )
+
+    reviewsCount.value = collection.count
+  }
+
+  // Nie mamy jeszcze endpointu statystyk
+  // użytkowników, więc pozostaje brak danych.
+  usersCount.value = null
+
+  const allSuccessful = results.every(
+    (result) => result.status === 'fulfilled'
+  )
+
+  const anySuccessful = results.some(
+    (result) => result.status === 'fulfilled'
+  )
+
+  if (allSuccessful) {
+    apiStatus.value = 'connected'
+  } else if (anySuccessful) {
+    apiStatus.value = 'partial'
+    error.value =
+      'Nie udało się pobrać wszystkich danych.'
+  } else {
+    apiStatus.value = 'offline'
+    error.value =
+      'Nie udało się połączyć z API.'
+  }
+
+  loading.value = false
+}
+
+function formatStat(value) {
+  return value === null ? '—' : value
+}
+
+onMounted(loadDashboard)
 </script>
 
 <template>
-  <div class="admin-page">
+  <main class="admin-page">
     <div class="admin-container">
-      <header class="page-header">
-        <p class="eyebrow">GAMEVERS ADMIN</p>
-        <h1>Panel administratora</h1>
-        <p>
-          Zarządzaj katalogiem gier i treściami
-          społeczności Gamevers.
-        </p>
+
+      <!-- Nagłówek -->
+      <header class="admin-heading">
+        <div>
+          <span class="eyebrow">
+            GAMEVERS ADMIN
+          </span>
+
+          <h1>Panel administratora</h1>
+
+          <p>
+            Witaj, {{ adminName }}!
+            Zarządzaj zawartością portalu Gamevers.
+          </p>
+        </div>
+
+        <span class="admin-symbol" aria-hidden="true">
+          🛡️
+        </span>
       </header>
 
-      <section class="stats-section">
-        <h2>Statystyki portalu</h2>
+      <!-- Statystyki -->
+      <section class="dashboard-section">
+        <div class="section-heading">
+          <h2>Statystyki portalu</h2>
+
+          <button
+            type="button"
+            class="refresh-button"
+            :disabled="loading"
+            @click="loadDashboard"
+          >
+            {{
+              loading
+                ? 'Odświeżanie...'
+                : 'Odśwież dane'
+            }}
+          </button>
+        </div>
 
         <div class="stats-grid">
           <article
@@ -72,58 +192,192 @@ const modules = [
               {{ stat.icon }}
             </span>
 
-            <strong>{{ stat.value }}</strong>
-            <span class="stat-label">{{ stat.label }}</span>
-          </article>
-        </div>
-      </section>
-
-      <section class="modules-section">
-        <h2>Zarządzanie portalem</h2>
-
-        <div class="modules-grid">
-          <article
-            v-for="module in modules"
-            :key="module.title"
-            class="module-card"
-          >
-            <span class="module-icon" aria-hidden="true">
-              {{ module.icon }}
+            <span class="stat-label">
+              {{ stat.label }}
             </span>
 
-            <h3>{{ module.title }}</h3>
-            <p>{{ module.description }}</p>
-
-          
-<RouterLink
-  v-if="module.path"
-  :to="module.path"
-  class="module-link"
->
-  Otwórz moduł →
-</RouterLink>
-
-<span v-else class="coming-soon">
-  Moduł w przygotowaniu
-</span>
-            
+            <strong class="stat-value">
+              {{
+                loading
+                  ? '...'
+                  : formatStat(stat.value)
+              }}
+            </strong>
           </article>
+
+          <article class="stat-card">
+            <span class="stat-icon" aria-hidden="true">
+              🌐
+            </span>
+
+            <span class="stat-label">
+              Status API
+            </span>
+
+            <strong
+              class="api-status"
+              :class="apiStatus"
+            >
+              <template v-if="apiStatus === 'checking'">
+                Sprawdzanie...
+              </template>
+
+              <template v-else-if="apiStatus === 'connected'">
+                Odpowiada
+              </template>
+
+              <template v-else-if="apiStatus === 'partial'">
+                Częściowy dostęp
+              </template>
+
+              <template v-else>
+                Brak połączenia
+              </template>
+            </strong>
+          </article>
+        </div>
+
+        <p
+          v-if="error"
+          class="error-message"
+          role="alert"
+        >
+          {{ error }}
+        </p>
+
+        <p class="stats-note">
+          Statystyki są pobierane z dostępnych
+          endpointów. Brak danych oznaczamy
+          symbolem „—”.
+        </p>
+      </section>
+
+      <!-- Szybkie działania -->
+      <section class="dashboard-section">
+        <h2>Szybkie działania</h2>
+
+        <div class="actions-grid">
+
+          <RouterLink
+            to="/admin/games"
+            class="action-card"
+          >
+            <span
+              class="action-icon"
+              aria-hidden="true"
+            >
+              🎮
+            </span>
+
+            <div class="action-content">
+              <h3>Zarządzaj grami</h3>
+
+              <p>
+                Dodawaj, edytuj i usuwaj gry
+                dostępne w katalogu.
+              </p>
+            </div>
+
+            <span class="action-arrow">→</span>
+          </RouterLink>
+
+          <RouterLink
+            to="/admin/reviews"
+            class="action-card"
+          >
+            <span
+              class="action-icon"
+              aria-hidden="true"
+            >
+              ⭐
+            </span>
+
+            <div class="action-content">
+              <h3>Moderuj recenzje</h3>
+
+              <p>
+                Przeglądaj opinie graczy
+                i usuwaj niewłaściwe treści.
+              </p>
+            </div>
+
+            <span class="action-arrow">→</span>
+          </RouterLink>
+
+          <RouterLink
+            to="/games"
+            class="action-card"
+          >
+            <span
+              class="action-icon"
+              aria-hidden="true"
+            >
+              🔍
+            </span>
+
+            <div class="action-content">
+              <h3>Przeglądaj katalog</h3>
+
+              <p>
+                Zobacz portal z perspektywy
+                zwykłego użytkownika.
+              </p>
+            </div>
+
+            <span class="action-arrow">→</span>
+          </RouterLink>
+
+          <RouterLink
+            to="/profile"
+            class="action-card"
+          >
+            <span
+              class="action-icon"
+              aria-hidden="true"
+            >
+              👤
+            </span>
+
+            <div class="action-content">
+              <h3>Mój profil</h3>
+
+              <p>
+                Przejdź do informacji
+                o swoim koncie.
+              </p>
+            </div>
+
+            <span class="action-arrow">→</span>
+          </RouterLink>
+
         </div>
       </section>
 
-      <p class="demo-notice">
-        Panel korzysta z danych demonstracyjnych.
-        Dostęp administratora i operacje zarządzania
-        zostaną zabezpieczone po stronie Laravel.
-      </p>
+      <!-- Informacje -->
+      <section class="info-panel">
+        <h2>Informacje administracyjne</h2>
+
+        <p>
+          Panel administratora jest przeznaczony
+          do zarządzania treściami Gamevers.
+        </p>
+
+        <p>
+          Dostęp do funkcji administracyjnych
+          musi być dodatkowo kontrolowany
+          przez backend Laravel.
+        </p>
+      </section>
+
     </div>
-  </div>
+  </main>
 </template>
 
 <style scoped>
 .admin-page {
-  min-height: 75vh;
-  padding: 60px 24px;
+  min-height: 80vh;
+  padding: 60px 20px 90px;
+  color: #F8FAFC;
 }
 
 .admin-container {
@@ -131,48 +385,83 @@ const modules = [
   margin: 0 auto;
 }
 
-.page-header {
-  margin-bottom: 48px;
+.admin-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 44px;
 }
 
 .eyebrow {
   color: #A78BFA;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: 2px;
-  margin-bottom: 12px;
 }
 
-.page-header h1 {
-  font-size: clamp(32px, 5vw, 48px);
-  margin-bottom: 12px;
+.admin-heading h1 {
+  margin: 12px 0;
+  font-size: 36px;
 }
 
-.page-header > p:last-child {
+.admin-heading p {
   color: #94A3B8;
   line-height: 1.7;
 }
 
-.stats-section,
-.modules-section {
-  margin-bottom: 48px;
+.admin-symbol {
+  font-size: 56px;
 }
 
-.stats-section h2,
-.modules-section h2 {
-  font-size: 24px;
-  margin-bottom: 24px;
+.dashboard-section {
+  margin-bottom: 42px;
+}
+
+.dashboard-section h2,
+.info-panel h2 {
+  margin: 0 0 20px;
+  font-size: 23px;
+}
+
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.section-heading h2 {
+  margin: 0;
+}
+
+.refresh-button {
+  padding: 11px 16px;
+  background: #24203C;
+  border: 1px solid #443B73;
+  border-radius: 9px;
+  color: #C4B5FD;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.refresh-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 20px;
+  gap: 16px;
 }
 
 .stat-card {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 12px;
   padding: 24px;
   background: #151B2B;
@@ -181,106 +470,158 @@ const modules = [
 }
 
 .stat-icon {
-  font-size: 26px;
-}
-
-.stat-card strong {
-  font-size: 36px;
-  color: #F8FAFC;
+  font-size: 27px;
 }
 
 .stat-label {
   color: #94A3B8;
-  font-size: 14px;
+  font-size: 13px;
 }
 
-.modules-grid {
+.stat-value {
+  font-size: 30px;
+  line-height: 1.2;
+}
+
+.api-status {
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.api-status.connected {
+  color: #6EE7B7;
+}
+
+.api-status.partial {
+  color: #FBBF24;
+}
+
+.api-status.offline {
+  color: #FCA5A5;
+}
+
+.api-status.checking {
+  color: #94A3B8;
+}
+
+.error-message {
+  margin-top: 18px;
+  padding: 14px;
+  background: #3B1D29;
+  border: 1px solid #7F1D1D;
+  border-radius: 9px;
+  color: #FCA5A5;
+  font-size: 13px;
+}
+
+.stats-note {
+  margin-top: 16px;
+  color: #94A3B8;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.actions-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
+  gap: 16px;
 }
 
-.module-card {
-  padding: 28px;
+.action-card {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 25px;
+  background: #151B2B;
+  border: 1px solid #293244;
+  border-radius: 14px;
+  color: #F8FAFC;
+  text-decoration: none;
+  transition:
+    border-color 0.2s,
+    transform 0.2s;
+}
+
+.action-card:hover {
+  border-color: #8B5CF6;
+  transform: translateY(-2px);
+}
+
+.action-icon {
+  font-size: 28px;
+}
+
+.action-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.action-content h3 {
+  margin: 0 0 9px;
+  font-size: 17px;
+}
+
+.action-content p {
+  margin: 0;
+  color: #94A3B8;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.action-arrow {
+  color: #A78BFA;
+  font-size: 22px;
+}
+
+.info-panel {
+  padding: 26px;
   background: #151B2B;
   border: 1px solid #293244;
   border-radius: 14px;
 }
 
-.module-icon {
-  display: block;
-  font-size: 28px;
-  margin-bottom: 18px;
-}
-
-.module-card h3 {
-  font-size: 20px;
-  margin-bottom: 12px;
-}
-
-.module-card p {
+.info-panel p {
   color: #94A3B8;
-  line-height: 1.7;
-  margin-bottom: 24px;
-}
-
-.coming-soon {
-  display: inline-block;
-  padding: 10px 14px;
-  background: #222039;
-  border-radius: 8px;
-  color: #C4B5FD;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.demo-notice {
-  padding-top: 24px;
-  border-top: 1px solid #293244;
-  color: #94A3B8;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.7;
 }
 
-@media (max-width: 768px) {
-  .admin-page {
-    padding: 40px 16px;
-  }
-
+@media (max-width: 1000px) {
   .stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
 
-  .modules-grid {
+@media (max-width: 700px) {
+  .admin-page {
+    padding: 40px 16px 70px;
+  }
+
+  .admin-heading h1 {
+    font-size: 29px;
+  }
+
+  .admin-symbol {
+    font-size: 38px;
+  }
+
+  .actions-grid {
     grid-template-columns: 1fr;
+  }
+
+  .section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .action-card {
+    padding: 20px;
   }
 }
 
 @media (max-width: 400px) {
-  .stat-card {
-    padding: 16px;
-  }
-
-  .stat-card strong {
-    font-size: 28px;
+  .stats-grid {
+    grid-template-columns: 1fr;
   }
 }
-
-  
-.module-link {
-  display: inline-block;
-  padding: 10px 16px;
-  background: #8B5CF6;
-  border-radius: 8px;
-  color: #FFFFFF;
-  font-size: 13px;
-  font-weight: 600;
-  text-decoration: none;
-  transition: background 0.2s;
-}
-
-.module-link:hover {
-  background: #7C3AED;
-}
-  
 </style>
