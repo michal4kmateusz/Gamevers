@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import * as reviewsService from '../../services/reviewsService'
 import AppNotification from '../../components/ui/AppNotification.vue'
+import AppLoader from '../../components/ui/AppLoader.vue'
 
 const reviews = ref([])
 const loading = ref(false)
@@ -44,7 +45,7 @@ const filteredReviews = computed(() => {
     let matchesRating = true
 
     if (ratingFilter.value === 'high') {
-      matchesRating = score >= 8
+      matchesRating = score >= 8 && score <= 10
     } else if (ratingFilter.value === 'medium') {
       matchesRating = score >= 5 && score < 8
     } else if (ratingFilter.value === 'low') {
@@ -270,7 +271,7 @@ onMounted(loadReviews)
         </article>
       </section>
 
-      <!-- Nowe powiadomienia -->
+      <!-- Powiadomienia -->
       <div
         v-if="successMessage"
         class="notification-wrapper"
@@ -346,12 +347,13 @@ onMounted(loadReviews)
           </span>
         </div>
 
-        <div
+        <!-- NOWOŚĆ: animowany loader -->
+        <AppLoader
           v-if="loading"
-          class="state-message"
-        >
-          Ładowanie recenzji...
-        </div>
+          size="medium"
+          message="Ładowanie recenzji..."
+          description="Pobieramy opinie użytkowników Gamevers."
+        />
 
         <div
           v-else-if="error"
@@ -443,7 +445,7 @@ onMounted(loadReviews)
         </div>
 
         <p
-          v-if="hasMorePages"
+          v-if="hasMorePages && !loading && !error"
           class="pagination-notice"
         >
           API zwróciło tylko część recenzji.
