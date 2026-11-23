@@ -1,9 +1,9 @@
-HTML
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import * as gamesService from '../../services/gamesService'
+import AppNotification from '../../components/ui/AppNotification.vue'
 
 const games = ref([])
 const loading = ref(false)
@@ -230,10 +230,13 @@ onMounted(loadGames)
         ← Panel administratora
       </RouterLink>
 
+      <!-- Nagłówek -->
       <header class="page-header">
         <div>
           <span class="eyebrow">GAMEVERS ADMIN</span>
+
           <h1>Zarządzanie grami</h1>
+
           <p>
             Dodawaj, edytuj i usuwaj gry
             dostępne w katalogu.
@@ -249,21 +252,21 @@ onMounted(loadGames)
         </button>
       </header>
 
-      <p
+      <!-- Powiadomienie o sukcesie -->
+      <AppNotification
         v-if="successMessage"
-        class="message success"
-        role="status"
-      >
-        {{ successMessage }}
-      </p>
+        type="success"
+        :message="successMessage"
+        @close="successMessage = ''"
+      />
 
-      <p
+      <!-- Powiadomienie o błędzie -->
+      <AppNotification
         v-if="error"
-        class="message error"
-        role="alert"
-      >
-        {{ error }}
-      </p>
+        type="error"
+        :message="error"
+        @close="error = ''"
+      />
 
       <!-- Formularz dodawania i edycji -->
       <section v-if="showForm" class="form-panel">
@@ -289,6 +292,7 @@ onMounted(loadGames)
 
         <form @submit.prevent="saveGame">
           <div class="form-grid">
+
             <div class="field full-width">
               <label for="game-title">
                 Tytuł gry *
@@ -379,15 +383,17 @@ onMounted(loadGames)
                 placeholder="Nazwa wydawcy"
               />
             </div>
+
           </div>
 
-          <p
-            v-if="formError"
-            class="message error"
-            role="alert"
-          >
-            {{ formError }}
-          </p>
+          <!-- Błąd formularza -->
+          <div v-if="formError" class="form-notification">
+            <AppNotification
+              type="error"
+              :message="formError"
+              @close="formError = ''"
+            />
+          </div>
 
           <div class="form-actions">
             <button
@@ -416,7 +422,7 @@ onMounted(loadGames)
         </form>
       </section>
 
-      <!-- Wyszukiwanie -->
+      <!-- Katalog -->
       <section class="catalog-panel">
         <div class="catalog-toolbar">
           <h2>Katalog gier</h2>
@@ -687,6 +693,10 @@ button:disabled {
   line-height: 1.6;
 }
 
+.form-notification {
+  margin-top: 20px;
+}
+
 .form-actions {
   display: flex;
   flex-wrap: wrap;
@@ -694,24 +704,8 @@ button:disabled {
   margin-top: 24px;
 }
 
-.message {
-  padding: 14px 16px;
+.notification {
   margin-bottom: 22px;
-  border-radius: 9px;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.message.success {
-  background: #10362B;
-  border: 1px solid #166534;
-  color: #6EE7B7;
-}
-
-.message.error {
-  background: #3B1D29;
-  border: 1px solid #7F1D1D;
-  color: #FCA5A5;
 }
 
 .search-input {
