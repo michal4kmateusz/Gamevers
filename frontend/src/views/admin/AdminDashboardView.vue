@@ -264,4 +264,22 @@ const modules = [
     font-size: 28px;
   }
 }
+
+  
+.module-link {
+  display: inline-block;
+  padding: 10px 16px;
+  background: #8B5CF6;
+  border-radius: 8px;
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.2s;
+}
+
+.module-link:hover {
+  background: #7C3AED;
+}
+  
 </style>
