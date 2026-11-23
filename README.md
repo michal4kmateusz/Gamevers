@@ -15,10 +15,13 @@ Struktura projektu
 - "backend/" — logika aplikacji i API
 - "docs/" — dokumentacja techniczna
 
-Zespół
+Zespół:
 
-Projekt realizowany przez dwóch programistów.
+Aleksander
+Mateusz
 
 Status
 
 Etap przygotowania i projektowania.
+
+
