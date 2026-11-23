@@ -1,7 +1,7 @@
 
 import api from './api'
 
-// Statusy obsługiwane przez bibliotekę.
+// Dostępne statusy gry w bibliotece
 export const LIBRARY_STATUSES = {
   WISHLIST: 'wishlist',
   PLAYING: 'playing',
@@ -9,53 +9,35 @@ export const LIBRARY_STATUSES = {
   DROPPED: 'dropped'
 }
 
-// Pobranie biblioteki zalogowanego użytkownika.
-// Opcjonalnie można filtrować po statusie.
-export async function getLibrary(params = {}) {
-  const response = await api.get('/library', {
-    params
-  })
-
-  return response.data
+// Pobieranie całej biblioteki użytkownika
+export function getLibrary() {
+  return api.get('/library')
 }
 
-// Dodanie gry do biblioteki.
-// Przykład: addToLibrary(1, 'wishlist')
-export async function addToLibrary(gameId, status) {
-  const response = await api.post('/library', {
+// Dodawanie gry do biblioteki
+export function addLibraryGame(gameId, status = 'wishlist') {
+  return api.post('/library', {
     game_id: gameId,
     status
   })
-
-  return response.data
 }
 
-// Zmiana statusu gry w bibliotece.
-// Przykład: updateLibraryStatus(1, 'completed')
-export async function updateLibraryStatus(gameId, status) {
-  const response = await api.put(
-    `/library/${gameId}`,
-    { status }
-  )
-
-  return response.data
+// Pobieranie pojedynczego wpisu z biblioteki
+export function getLibraryGame(gameId) {
+  return api.get(`/library/${encodeURIComponent(gameId)}`)
 }
 
-// Usunięcie gry z biblioteki.
-export async function removeFromLibrary(gameId) {
-  const response = await api.delete(
-    `/library/${gameId}`
+// Aktualizacja statusu gry
+export function updateLibraryGame(gameId, data) {
+  return api.put(
+    `/library/${encodeURIComponent(gameId)}`,
+    data
   )
-
-  return response.data
 }
 
-// Sprawdzenie, czy gra znajduje się w bibliotece.
-// Backend zwróci informację o statusie gry.
-export async function getLibraryGame(gameId) {
-  const response = await api.get(
-    `/library/${gameId}`
+// Usuwanie gry z biblioteki
+export function removeLibraryGame(gameId) {
+  return api.delete(
+    `/library/${encodeURIComponent(gameId)}`
   )
-
-  return response.data
 }
