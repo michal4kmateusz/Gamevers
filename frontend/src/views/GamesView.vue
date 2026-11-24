@@ -1,12 +1,7 @@
 
-
 <script setup>
-import { ref, computed, watch } from 'vue'
-import {
-  RouterLink,
-  useRoute,
-  useRouter
-} from 'vue-router'
+import { ref, computed, watch, onUnmounted } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 
 import {
   games,
@@ -15,8 +10,14 @@ import {
   filterGames
 } from '../data/games'
 
+import {
+  useLibraryStore,
+  LIBRARY_STATUSES
+} from '../stores/libraryStore'
+
 const route = useRoute()
 const router = useRouter()
+const libraryStore = useLibraryStore()
 
 /* STAN FILTROW */
 
@@ -32,6 +33,68 @@ const pageSize = ref(12)
 
 const resultsSection = ref(null)
 const failedImages = ref({})
+
+/* POWIADOMIENIA */
+
+const notification = ref('')
+const notificationType = ref('success')
+
+let notificationTimer = null
+
+function showNotification(message, type = 'success') {
+  clearTimeout(notificationTimer)
+
+  notification.value = message
+  notificationType.value = type
+
+  notificationTimer = setTimeout(() => {
+    notification.value = ''
+  }, 3500)
+}
+
+onUnmounted(() => {
+  clearTimeout(notificationTimer)
+})
+
+/* BIBLIOTEKA */
+
+function isSaved(gameId) {
+  return libraryStore.hasGame(gameId)
+}
+
+function getStatusInformation(gameId) {
+  const status = libraryStore.getStatus(gameId)
+
+  return LIBRARY_STATUSES.find(
+    item => item.value === status
+  ) || null
+}
+
+function toggleLibrary(game) {
+  const wasSaved = isSaved(game.id)
+
+  const success = libraryStore.toggleGame(game.id)
+
+  if (!success) {
+    showNotification(
+      libraryStore.error ||
+      'Nie udało się zapisać zmian.',
+      'error'
+    )
+
+    return
+  }
+
+  showNotification(
+    wasSaved
+      ? `Usunięto ${game.title} z biblioteki.`
+      : `Dodano ${game.title} do biblioteki.`
+  )
+}
+
+const savedGamesCount = computed(() =>
+  games.filter(game => isSaved(game.id)).length
+)
 
 /* SORTOWANIE */
 
@@ -97,48 +160,48 @@ function readQuery(query) {
 watch(
   () => route.query,
   query => {
-    readQuery(query)
+    if (route.path === '/games') {
+      readQuery(query)
+    }
   },
   { immediate: true }
 )
 
 /* FILTROWANIE */
 
-const filteredGames = computed(() => {
-  return filterGames({
+const filteredGames = computed(() =>
+  filterGames({
     search: search.value,
     genre: selectedGenre.value,
     platform: selectedPlatform.value,
     minRating: minRating.value,
     sort: sort.value
   })
-})
+)
 
-const activeFiltersCount = computed(() => {
-  return [
+const activeFiltersCount = computed(() =>
+  [
     search.value.trim() !== '',
     selectedGenre.value !== '',
     selectedPlatform.value !== '',
     Number(minRating.value) > 0
   ].filter(Boolean).length
-})
+)
 
 /* PAGINACJA */
 
-const totalPages = computed(() => {
-  return Math.max(
+const totalPages = computed(() =>
+  Math.max(
     1,
     Math.ceil(
-      filteredGames.value.length /
-      pageSize.value
+      filteredGames.value.length / pageSize.value
     )
   )
-})
+)
 
 const visibleGames = computed(() => {
   const start =
-    (currentPage.value - 1) *
-    pageSize.value
+    (currentPage.value - 1) * pageSize.value
 
   return filteredGames.value.slice(
     start,
@@ -146,12 +209,12 @@ const visibleGames = computed(() => {
   )
 })
 
-const pageNumbers = computed(() => {
-  return Array.from(
+const pageNumbers = computed(() =>
+  Array.from(
     { length: totalPages.value },
     (_, index) => index + 1
   )
-})
+)
 
 const firstResult = computed(() => {
   if (!filteredGames.value.length) {
@@ -164,20 +227,24 @@ const firstResult = computed(() => {
   )
 })
 
-const lastResult = computed(() => {
-  return Math.min(
+const lastResult = computed(() =>
+  Math.min(
     currentPage.value * pageSize.value,
     filteredGames.value.length
   )
-})
+)
 
-/* ZAPIS FILTROW W ADRESIE */
+/* SYNCHRONIZACJA ADRESU URL */
 
 function updateQuery() {
+  if (route.path !== '/games') {
+    return
+  }
+
   const query = {}
 
-  if (search.value.trim()) {
-    query.search = search.value.trim()
+  if (search.value !== '') {
+    query.search = search.value
   }
 
   if (selectedGenre.value) {
@@ -205,10 +272,7 @@ function updateQuery() {
       key => query[key] === currentQuery[key]
     )
 
-  if (
-    !unchanged &&
-    route.path === '/games'
-  ) {
+  if (!unchanged) {
     router.replace({
       path: '/games',
       query
@@ -269,17 +333,19 @@ function changePage(page) {
   ).matches
 
   resultsSection.value?.scrollIntoView({
-    behavior: reducedMotion
-      ? 'instant'
-      : 'smooth',
+    behavior: reducedMotion ? 'instant' : 'smooth',
     block: 'start'
   })
 }
 
-/* FORMATOWANIE DANYCH */
+/* FORMATOWANIE */
 
 function formatRating(rating) {
-  return Number(rating).toFixed(1)
+  const value = Number(rating)
+
+  return Number.isFinite(value)
+    ? value.toFixed(1)
+    : '—'
 }
 
 function releaseYear(date) {
@@ -317,7 +383,7 @@ function handleImageError(id) {
 
       </nav>
 
-      <!-- NAGLOWEK KATALOGU -->
+      <!-- BANER KATALOGU -->
 
       <section class="catalog-hero">
 
@@ -355,7 +421,36 @@ function handleImageError(id) {
               <span>Platform</span>
             </div>
 
+            <div>
+              <strong class="saved-count">
+                {{ savedGamesCount }}
+              </strong>
+
+              <span>W bibliotece</span>
+            </div>
+
           </div>
+
+          <RouterLink
+            to="/library"
+            class="hero-library-link"
+          >
+
+            <svg
+              width="17"
+              height="17"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              aria-hidden="true"
+            >
+              <path d="M6 3h12v18l-6-4-6 4z"/>
+            </svg>
+
+            Moja biblioteka →
+
+          </RouterLink>
 
         </div>
 
@@ -468,9 +563,7 @@ function handleImageError(id) {
 
               <label
                 class="filter-option"
-                :class="{
-                  active: selectedGenre === ''
-                }"
+                :class="{ active: selectedGenre === '' }"
               >
 
                 <input
@@ -539,8 +632,7 @@ function handleImageError(id) {
                 :key="platform"
                 class="filter-option"
                 :class="{
-                  active:
-                    selectedPlatform === platform
+                  active: selectedPlatform === platform
                 }"
               >
 
@@ -614,8 +706,7 @@ function handleImageError(id) {
               <h2>Wszystkie gry</h2>
 
               <p aria-live="polite">
-                Znaleziono:
-                {{ filteredGames.length }}
+                Znaleziono: {{ filteredGames.length }}
               </p>
 
             </div>
@@ -710,42 +801,111 @@ function handleImageError(id) {
               v-for="game in visibleGames"
               :key="game.id"
               class="catalog-card"
+              :class="{ 'card-saved': isSaved(game.id) }"
             >
 
-              <RouterLink
-                :to="`/games/${game.id}`"
-                class="game-cover"
-                :aria-label="`Zobacz ${game.title}`"
-              >
+              <!-- OKLADKA -->
 
-                <img
-                  v-if="!failedImages[game.id]"
-                  :src="game.cover_url"
-                  :alt="game.title"
-                  loading="lazy"
-                  decoding="async"
-                  @error="handleImageError(game.id)"
-                />
+              <div class="cover-wrapper">
 
-                <div
-                  v-else
-                  class="cover-placeholder"
+                <RouterLink
+                  :to="`/games/${game.id}`"
+                  class="game-cover"
+                  :aria-label="`Zobacz ${game.title}`"
                 >
-                  GAMEVERS
-                </div>
+
+                  <img
+                    v-if="!failedImages[game.id]"
+                    :src="game.cover_url"
+                    :alt="game.title"
+                    loading="lazy"
+                    decoding="async"
+                    @error="handleImageError(game.id)"
+                  />
+
+                  <div
+                    v-else
+                    class="cover-placeholder"
+                  >
+                    GAMEVERS
+                  </div>
+
+                </RouterLink>
+
+                <!-- OCENA -->
 
                 <span class="game-rating">
                   ★ {{ formatRating(game.rating) }}
                 </span>
 
+                <!-- ZAKLADKA -->
+
+                <button
+                  type="button"
+                  class="bookmark-button"
+                  :class="{ saved: isSaved(game.id) }"
+                  :aria-pressed="isSaved(game.id)"
+                  :aria-label="
+                    isSaved(game.id)
+                      ? `Usuń ${game.title} z biblioteki`
+                      : `Dodaj ${game.title} do biblioteki`
+                  "
+                  :title="
+                    isSaved(game.id)
+                      ? 'Usuń z biblioteki'
+                      : 'Dodaj do biblioteki'
+                  "
+                  @click.stop="toggleLibrary(game)"
+                >
+
+                  <svg
+                    width="19"
+                    height="19"
+                    viewBox="0 0 24 24"
+                    :fill="
+                      isSaved(game.id)
+                        ? 'currentColor'
+                        : 'none'
+                    "
+                    stroke="currentColor"
+                    stroke-width="1.7"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M6 3h12v18l-6-4-6 4z"/>
+                  </svg>
+
+                </button>
+
+                <!-- STATUS BIBLIOTEKI -->
+
                 <span
-                  v-if="game.popular"
+                  v-if="
+                    isSaved(game.id) &&
+                    getStatusInformation(game.id)
+                  "
+                  class="library-status"
+                  :style="{
+                    color: getStatusInformation(game.id).color
+                  }"
+                >
+
+                  <span class="status-dot"></span>
+
+                  {{ getStatusInformation(game.id).label }}
+
+                </span>
+
+                <span
+                  v-else-if="game.popular"
                   class="popular-label"
                 >
                   Popularne
                 </span>
 
-              </RouterLink>
+              </div>
+
+              <!-- INFORMACJE O GRZE -->
 
               <div class="game-content">
 
@@ -793,6 +953,7 @@ function handleImageError(id) {
                     :to="`/games/${game.id}`"
                     class="details-link"
                   >
+
                     Zobacz szczegóły
 
                     <svg
@@ -890,9 +1051,7 @@ function handleImageError(id) {
                 v-for="page in pageNumbers"
                 :key="page"
                 type="button"
-                :class="{
-                  active: currentPage === page
-                }"
+                :class="{ active: currentPage === page }"
                 :aria-current="
                   currentPage === page
                     ? 'page'
@@ -919,6 +1078,7 @@ function handleImageError(id) {
           <p class="demo-notice">
             Katalog demonstracyjny Gamevers.
             Wyświetlane oceny są przykładowe.
+            Biblioteka jest zapisywana lokalnie.
           </p>
 
         </section>
@@ -926,6 +1086,47 @@ function handleImageError(id) {
       </div>
 
     </div>
+
+    <!-- POWIADOMIENIA -->
+
+    <Transition name="toast">
+
+      <div
+        v-if="notification"
+        class="notification"
+        :class="notificationType"
+        role="status"
+      >
+
+        <span class="notification-icon">
+          {{ notificationType === 'success' ? '✓' : '!' }}
+        </span>
+
+        <div class="notification-content">
+
+          <strong>
+            {{
+              notificationType === 'success'
+                ? 'Biblioteka Gamevers'
+                : 'Wystąpił błąd'
+            }}
+          </strong>
+
+          <span>{{ notification }}</span>
+
+        </div>
+
+        <button
+          type="button"
+          aria-label="Zamknij powiadomienie"
+          @click="notification = ''"
+        >
+          ×
+        </button>
+
+      </div>
+
+    </Transition>
 
   </main>
 </template>
@@ -966,10 +1167,7 @@ function handleImageError(id) {
   text-decoration: none;
 }
 
-.breadcrumbs a:hover {
-  color: #C4B5FD;
-}
-
+.breadcrumbs a:hover,
 .breadcrumbs span:last-child {
   color: #C4B5FD;
 }
@@ -987,7 +1185,7 @@ function handleImageError(id) {
   background:
     radial-gradient(
       ellipse at 90% 20%,
-      rgba(139, 92, 246, .24),
+      rgba(139,92,246,.24),
       transparent 55%
     ),
     linear-gradient(
@@ -1005,12 +1203,12 @@ function handleImageError(id) {
   z-index: -1;
   background-image:
     linear-gradient(
-      rgba(139, 92, 246, .05) 1px,
+      rgba(139,92,246,.05) 1px,
       transparent 1px
     ),
     linear-gradient(
       90deg,
-      rgba(139, 92, 246, .05) 1px,
+      rgba(139,92,246,.05) 1px,
       transparent 1px
     );
   background-size: 35px 35px;
@@ -1072,9 +1270,35 @@ function handleImageError(id) {
   font-weight: 800;
 }
 
+.hero-stats strong.saved-count {
+  color: #A78BFA;
+}
+
 .hero-stats span {
   color: #94A3B8;
   font-size: 12px;
+}
+
+.hero-library-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 40px;
+  margin-top: 24px;
+  padding: 10px 14px;
+  background: #31234F;
+  border: 1px solid #59458A;
+  border-radius: 7px;
+  color: #C4B5FD;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background .2s;
+}
+
+.hero-library-link:hover {
+  background: #44306B;
+  color: #FFFFFF;
 }
 
 /* WYSZUKIWARKA */
@@ -1370,10 +1594,19 @@ function handleImageError(id) {
     box-shadow .25s ease;
 }
 
+.catalog-card.card-saved {
+  border-color: #59458A;
+}
+
 /* OKLADKA */
 
-.game-cover {
+.cover-wrapper {
   position: relative;
+  overflow: hidden;
+  background: #201B36;
+}
+
+.game-cover {
   display: block;
   aspect-ratio: 460 / 215;
   overflow: hidden;
@@ -1415,12 +1648,13 @@ function handleImageError(id) {
   color: #67E8F9;
   font-size: 11px;
   font-weight: 800;
+  pointer-events: none;
 }
 
 .popular-label {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  bottom: 10px;
+  left: 10px;
   padding: 5px 7px;
   background: rgba(49,35,79,.95);
   border: 1px solid #8B5CF6;
@@ -1428,6 +1662,69 @@ function handleImageError(id) {
   color: #E9D5FF;
   font-size: 9px;
   font-weight: 600;
+  pointer-events: none;
+}
+
+/* ZAKLADKA BIBLIOTEKI */
+
+.bookmark-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 37px;
+  height: 37px;
+  padding: 0;
+  background: rgba(11,15,25,.9);
+  border: 1px solid #475569;
+  border-radius: 8px;
+  color: #F8FAFC;
+  cursor: pointer;
+  transition:
+    background .2s,
+    border-color .2s,
+    color .2s;
+}
+
+.bookmark-button:hover {
+  background: #31234F;
+  border-color: #8B5CF6;
+  color: #C4B5FD;
+}
+
+.bookmark-button.saved {
+  background: #8B5CF6;
+  border-color: #A78BFA;
+  color: #FFFFFF;
+}
+
+/* STATUS BIBLIOTEKI */
+
+.library-status {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 20px);
+  padding: 5px 8px;
+  background: rgba(11,15,25,.95);
+  border: 1px solid #293244;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.status-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  background: currentColor;
+  border-radius: 50%;
 }
 
 /* ZAWARTOSC KARTY */
@@ -1667,6 +1964,83 @@ function handleImageError(id) {
   text-align: center;
 }
 
+/* POWIADOMIENIA */
+
+.notification {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: min(420px, calc(100vw - 48px));
+  padding: 15px;
+  background: #143529;
+  border: 1px solid #166534;
+  border-radius: 10px;
+  color: #86EFAC;
+  box-shadow: 0 12px 35px rgba(0,0,0,.4);
+}
+
+.notification.error {
+  background: #3D222B;
+  border-color: #991B1B;
+  color: #FCA5A5;
+}
+
+.notification-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 35px;
+  height: 35px;
+  background: rgba(255,255,255,.08);
+  border-radius: 50%;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.notification-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.notification-content strong {
+  font-size: 13px;
+}
+
+.notification-content span {
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.notification button {
+  flex-shrink: 0;
+  padding: 4px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 23px;
+  cursor: pointer;
+}
+
+.toast-enter-active,
+.toast-leave-active {
+  transition: opacity .2s, transform .2s;
+}
+
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
 /* MOBILNE FILTRY */
 
 .mobile-filter-button,
@@ -1787,7 +2161,10 @@ input[type="range"]:focus-visible {
   }
 
   .hero-stats {
-    gap: 25px;
+    display: grid;
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+    gap: 17px;
     margin-top: 20px;
   }
 
@@ -1797,6 +2174,13 @@ input[type="range"]:focus-visible {
 
   .hero-stats span {
     font-size: 11px;
+  }
+
+  .hero-library-link {
+    width: 100%;
+    justify-content: center;
+    min-height: 43px;
+    margin-top: 20px;
   }
 
   .search-panel {
@@ -1885,6 +2269,25 @@ input[type="range"]:focus-visible {
     font-size: 10px;
   }
 
+  .bookmark-button {
+    top: 6px;
+    right: 6px;
+    width: 34px;
+    height: 34px;
+  }
+
+  .bookmark-button svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .library-status {
+    bottom: 6px;
+    left: 6px;
+    padding: 4px 6px;
+    font-size: 9px;
+  }
+
   .popular-label {
     display: none;
   }
@@ -1922,6 +2325,15 @@ input[type="range"]:focus-visible {
     height: 40px;
   }
 
+  .notification {
+    right: 14px;
+    bottom: 14px;
+    left: 14px;
+    width: auto;
+    max-width: none;
+    padding: 13px;
+  }
+
 }
 
 /* MALE TELEFONY */
@@ -1950,7 +2362,16 @@ input[type="range"]:focus-visible {
   }
 
   .hero-stats {
-    gap: 18px;
+    gap: 14px;
+  }
+
+  .library-status {
+    font-size: 8px;
+  }
+
+  .bookmark-button {
+    width: 30px;
+    height: 30px;
   }
 
 }
@@ -1960,7 +2381,11 @@ input[type="range"]:focus-visible {
 @media (prefers-reduced-motion: reduce) {
 
   .catalog-card,
-  .game-cover img {
+  .game-cover img,
+  .bookmark-button,
+  .hero-library-link,
+  .toast-enter-active,
+  .toast-leave-active {
     transition: none;
   }
 
