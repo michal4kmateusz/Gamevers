@@ -7,145 +7,148 @@ import HomeHero from '../components/home/HomeHero.vue'
 import PopularGameCard from '../components/games/PopularGameCard.vue'
 import GenreCard from '../components/games/GenreCard.vue'
 
+import {
+  categories,
+  filterGames,
+  getPopularGames,
+  getGameById,
+  getCatalogStats
+} from '../data/games'
+
 const router = useRouter()
+
+/* WYSZUKIWANIE */
 
 const search = ref('')
 const activeGenre = ref('Wszystkie gry')
 
-function steamImage(id, file = 'header.jpg') {
-  return `https://cdn.akamai.steamstatic.com/steam/apps/${id}/${file}`
-}
-
-/* POPULARNE GRY */
-
-const games = [
-  {
-    title: 'ELDEN RING',
-    genre: 'RPG · Otwarty świat',
-    rating: '9.3',
-    image: steamImage(1245620),
-    platforms: 'PC · PlayStation · Xbox'
-  },
-  {
-    title: "Baldur's Gate 3",
-    genre: 'RPG · Turowe',
-    rating: '9.6',
-    image: steamImage(1086940),
-    platforms: 'PC · PS5 · Xbox'
-  },
-  {
-    title: 'Wiedźmin 3: Dziki Gon',
-    genre: 'RPG · Otwarty świat',
-    rating: '9.5',
-    image: steamImage(292030),
-    platforms: 'PC · PlayStation · Xbox'
-  },
-  {
-    title: 'Hades',
-    genre: 'Roguelike · Akcja · Niezależne',
-    rating: '9.1',
-    image: steamImage(1145360),
-    platforms: 'PC · PlayStation · Xbox'
-  }
-]
-
-/* GATUNKI */
-
-const genres = [
+const quickGenres = [
   'Wszystkie gry',
   'RPG',
   'Akcja',
-  'Otwarty świat',
   'Przygodowe',
   'Strategiczne',
   'Niezależne',
   'Wyścigowe'
 ]
 
-const categories = [
-  {
-    name: 'RPG',
-    image: steamImage(1086940),
-    description: 'Twoja postać. Twoja historia.'
-  },
-  {
-    name: 'Akcja',
-    image: steamImage(1145360),
-    description: 'Dynamiczna rozgrywka i wyzwania.'
-  },
-  {
-    name: 'Otwarty świat',
-    image: steamImage(1245620),
-    description: 'Odkrywaj bez ograniczeń.'
-  },
-  {
-    name: 'Niezależne',
-    image: steamImage(367520),
-    description: 'Małe studia. Wielkie pomysły.'
-  }
-]
+/* DANE KATALOGU */
 
-/* RECENZJE DEMONSTRACYJNE */
+const catalogStats = getCatalogStats()
+
+const popularGames = computed(() => {
+  return getPopularGames(4)
+})
+
+const filteredGames = computed(() => {
+  if (
+    !search.value.trim() &&
+    activeGenre.value === 'Wszystkie gry'
+  ) {
+    return popularGames.value
+  }
+
+  return filterGames({
+    search: search.value,
+    genre: activeGenre.value,
+    sort: 'popular'
+  }).slice(0, 4)
+})
+
+const featuredGame = getGameById(6)
+
+/* PRZYKLADOWE RECENZJE */
 
 const reviews = [
   {
+    id: 1,
     author: 'NeonRaven',
     game: 'Cyberpunk 2077',
-    rating: '9.0',
-    content: 'Night City wciąga od pierwszej minuty. Świetnie napisane postacie i świat, do którego po prostu chce się wracać.'
+    gameId: 1,
+    rating: 9.0,
+    content:
+      'Night City wciąga od pierwszej minuty. Świetnie napisane postacie i świat, do którego po prostu chce się wracać.'
   },
   {
+    id: 2,
     author: 'Luna.exe',
     game: 'Hollow Knight',
-    rating: '9.5',
-    content: 'Każdy zakątek skrywa coś nowego. Muzyka, klimat i wyjątkowy świat tworzą niesamowitą przygodę.'
+    gameId: 6,
+    rating: 9.5,
+    content:
+      'Każdy zakątek skrywa coś nowego. Muzyka, klimat i wyjątkowy świat tworzą niesamowitą przygodę.'
   }
 ]
 
-/* FILTROWANIE */
-
-const filteredGames = computed(() => {
-  const query = search.value.trim().toLowerCase()
-
-  return games.filter(game => {
-    const matchesSearch =
-      game.title.toLowerCase().includes(query) ||
-      game.genre.toLowerCase().includes(query)
-
-    const matchesGenre =
-      activeGenre.value === 'Wszystkie gry' ||
-      game.genre.toLowerCase().includes(
-        activeGenre.value.toLowerCase()
-      )
-
-    return matchesSearch && matchesGenre
-  })
-})
-
-/* NAWIGACJA */
+/* WYSZUKIWANIE W KATALOGU */
 
 function browseGames() {
+  const query = {}
+
+  if (search.value.trim()) {
+    query.search = search.value.trim()
+  }
+
+  if (activeGenre.value !== 'Wszystkie gry') {
+    query.genre = activeGenre.value
+  }
+
   router.push({
     path: '/games',
-    query: {
-      ...(search.value.trim()
-        ? { search: search.value.trim() }
-        : {}),
-      ...(activeGenre.value !== 'Wszystkie gry'
-        ? { genre: activeGenre.value }
-        : {})
-    }
+    query
   })
 }
+
+/* WYBOR KATEGORII */
+
+function selectCategory(category) {
+  const genre =
+    typeof category === 'string'
+      ? category
+      : category?.name
+
+  if (!genre) {
+    return
+  }
+
+  router.push({
+    path: '/games',
+    query: { genre }
+  })
+}
+
+/* RESETOWANIE FILTROW */
 
 function resetFilters() {
   search.value = ''
   activeGenre.value = 'Wszystkie gry'
 }
 
+/* BIBLIOTEKA */
+
 function handleAddToLibrary() {
   router.push('/library')
 }
+
+/* BANER POLECANEJ GRY */
+
+const featuredBackground = computed(() => {
+  if (!featuredGame) {
+    return {}
+  }
+
+  return {
+    backgroundImage: `
+      linear-gradient(
+        90deg,
+        #151B2B 0%,
+        rgba(11, 15, 25, .85) 40%,
+        rgba(11, 15, 25, .15) 100%
+      ),
+      url('${featuredGame.banner_url}')
+    `
+  }
+})
 </script>
 
 <template>
@@ -184,12 +187,12 @@ function handleAddToLibrary() {
             <div class="search-input">
 
               <svg
-                width="20"
-                height="20"
+                width="19"
+                height="19"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
-                stroke-width="1.7"
+                stroke-width="1.8"
                 aria-hidden="true"
               >
                 <circle cx="11" cy="11" r="7"/>
@@ -217,7 +220,7 @@ function handleAddToLibrary() {
           <div class="genre-filters">
 
             <button
-              v-for="genre in genres"
+              v-for="genre in quickGenres"
               :key="genre"
               type="button"
               :class="{
@@ -247,17 +250,33 @@ function handleAddToLibrary() {
               ODKRYWAJ
             </span>
 
-            <h2>Popularne teraz</h2>
+            <h2>
+              {{
+                search.trim() ||
+                activeGenre !== 'Wszystkie gry'
+                  ? 'Wyniki wyszukiwania'
+                  : 'Popularne teraz'
+              }}
+            </h2>
 
             <p>
-              Tytuły, o których mówi społeczność.
+              {{
+                search.trim() ||
+                activeGenre !== 'Wszystkie gry'
+                  ? 'Gry pasujące do Twoich preferencji.'
+                  : 'Odkryj polecane tytuły z katalogu.'
+              }}
             </p>
 
           </div>
 
-          <RouterLink to="/games">
+          <button
+            type="button"
+            class="section-link"
+            @click="browseGames"
+          >
             Zobacz wszystkie →
-          </RouterLink>
+          </button>
 
         </div>
 
@@ -268,7 +287,7 @@ function handleAddToLibrary() {
 
           <PopularGameCard
             v-for="game in filteredGames"
-            :key="game.title"
+            :key="game.id"
             :game="game"
             @add-to-library="handleAddToLibrary"
           />
@@ -280,18 +299,12 @@ function handleAddToLibrary() {
           class="empty-state"
         >
 
-          <svg
-            width="42"
-            height="42"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
+          <span
+            class="empty-icon"
             aria-hidden="true"
           >
-            <circle cx="11" cy="11" r="7"/>
-            <path d="m16 16 5 5"/>
-          </svg>
+            ⌕
+          </span>
 
           <h3>Nie znaleziono gier</h3>
 
@@ -312,7 +325,7 @@ function handleAddToLibrary() {
 
       </section>
 
-      <!-- NOWE KARTY KATEGORII -->
+      <!-- KATEGORIE -->
 
       <section class="home-section">
 
@@ -334,7 +347,10 @@ function handleAddToLibrary() {
 
           </div>
 
-          <RouterLink to="/games">
+          <RouterLink
+            to="/games"
+            class="section-link"
+          >
             Wszystkie gatunki →
           </RouterLink>
 
@@ -345,21 +361,20 @@ function handleAddToLibrary() {
           <GenreCard
             v-for="category in categories"
             :key="category.name"
-            :genre="category"
+            :category="category"
+            @select="selectCategory(category)"
           />
 
         </div>
 
       </section>
 
-      <!-- WYROZNIONA GRA -->
+      <!-- POLECANA GRA -->
 
       <section
+        v-if="featuredGame"
         class="featured-banner"
-        :style="{
-          backgroundImage:
-            `linear-gradient(90deg, #151B2B 0%, rgba(11,15,25,.75) 45%, rgba(11,15,25,.15) 100%), url('${steamImage(367520, 'library_hero.jpg')}')`
-        }"
+        :style="featuredBackground"
       >
 
         <div class="featured-content">
@@ -372,30 +387,23 @@ function handleAddToLibrary() {
             Mała gra. Ogromny świat.
           </h2>
 
-          <h3>Hollow Knight</h3>
+          <h3>{{ featuredGame.title }}</h3>
 
           <p>
-            Zejdź do Hallownest.
-            Zgub się w pięknym,
-            ręcznie rysowanym świecie.
+            {{ featuredGame.description }}
           </p>
 
           <div class="featured-actions">
 
             <RouterLink
-              :to="{
-                path: '/games',
-                query: {
-                  search: 'Hollow Knight'
-                }
-              }"
+              :to="`/games/${featuredGame.id}`"
               class="primary-button"
             >
               Poznaj grę →
             </RouterLink>
 
             <span class="rating">
-              ★ 9.4
+              ★ {{ featuredGame.rating.toFixed(1) }}
             </span>
 
           </div>
@@ -421,7 +429,7 @@ function handleAddToLibrary() {
             </h2>
 
             <p>
-              Sprawdź, co polecają inni gracze.
+              Zobacz przykładowe recenzje graczy.
             </p>
 
           </div>
@@ -432,7 +440,7 @@ function handleAddToLibrary() {
 
           <article
             v-for="review in reviews"
-            :key="review.author"
+            :key="review.id"
             class="review-card"
           >
 
@@ -447,18 +455,19 @@ function handleAddToLibrary() {
               </strong>
 
               <span class="rating">
-                ★ {{ review.rating }}
+                ★ {{ review.rating.toFixed(1) }}
               </span>
 
             </div>
 
-            <h3>
+            <RouterLink
+              :to="`/games/${review.gameId}`"
+              class="review-game"
+            >
               {{ review.game }}
-            </h3>
+            </RouterLink>
 
-            <p>
-              {{ review.content }}
-            </p>
+            <p>{{ review.content }}</p>
 
             <div class="review-footer">
               Przykładowa recenzja
@@ -466,30 +475,27 @@ function handleAddToLibrary() {
 
           </article>
 
-          <!-- REJESTRACJA -->
+          <!-- ZACHECENIE DO REJESTRACJI -->
 
           <article class="join-card">
 
             <div class="join-icon">
 
               <svg
-                width="25"
-                height="25"
+                width="26"
+                height="26"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
                 stroke-width="1.7"
+                stroke-linecap="round"
+                stroke-linejoin="round"
                 aria-hidden="true"
               >
-                <rect
-                  x="2"
-                  y="6"
-                  width="20"
-                  height="12"
-                  rx="4"
-                />
-                <path d="M7 10v4M5 12h4"/>
-                <path d="M16 10h.01M19 13h.01"/>
+                <path d="M6 7h12a4 4 0 0 1 4 3.5l1 5a3 3 0 0 1-5 2.5l-3-3H9l-3 3a3 3 0 0 1-5-2.5l1-5A4 4 0 0 1 6 7Z"/>
+                <path d="M5 11h5m-2.5-2.5v5"/>
+                <circle cx="16" cy="11" r=".7"/>
+                <circle cx="19" cy="13" r=".7"/>
               </svg>
 
             </div>
@@ -517,45 +523,48 @@ function handleAddToLibrary() {
 
       </section>
 
-      <!-- PODSUMOWANIE -->
+      <!-- STATYSTYKI KATALOGU -->
 
-      <section class="portal-stats">
+      <section
+        class="portal-stats"
+        aria-label="Statystyki katalogu"
+      >
 
         <div class="stat-item">
 
-          <span class="stat-icon">
-            ◈
-          </span>
+          <span class="stat-icon">◈</span>
 
           <div>
-            <strong>Odkrywaj</strong>
-            <span>nowe gry</span>
+            <strong>
+              {{ catalogStats.totalGames }}
+            </strong>
+            <span>Gier w katalogu</span>
           </div>
 
         </div>
 
         <div class="stat-item">
 
-          <span class="stat-icon">
-            ◎
-          </span>
+          <span class="stat-icon">◎</span>
 
           <div>
-            <strong>Dołącz</strong>
-            <span>do społeczności</span>
+            <strong>
+              {{ catalogStats.totalGenres }}
+            </strong>
+            <span>Gatunków gier</span>
           </div>
 
         </div>
 
         <div class="stat-item">
 
-          <span class="stat-icon">
-            ▥
-          </span>
+          <span class="stat-icon">▥</span>
 
           <div>
-            <strong>Twórz</strong>
-            <span>własną kolekcję</span>
+            <strong>
+              {{ catalogStats.totalPlatforms }}
+            </strong>
+            <span>Platform</span>
           </div>
 
         </div>
@@ -604,10 +613,10 @@ function handleAddToLibrary() {
   background: #8B5CF6;
   border: 1px solid #8B5CF6;
   border-radius: 8px;
-  box-shadow: 0 4px 18px rgba(139, 92, 246, .18);
   color: #FFFFFF;
   font-size: 13px;
   font-weight: 700;
+  text-align: center;
   text-decoration: none;
   cursor: pointer;
   transition: background .2s;
@@ -615,12 +624,7 @@ function handleAddToLibrary() {
 
 .primary-button:hover {
   background: #7C3AED;
-}
-
-button:focus-visible,
-a:focus-visible {
-  outline: 2px solid #C4B5FD;
-  outline-offset: 3px;
+  border-color: #7C3AED;
 }
 
 /* OCENY */
@@ -640,8 +644,10 @@ a:focus-visible {
 
 .discovery-section {
   display: grid;
-  grid-template-columns: 1fr 1.7fr;
-  align-items: start;
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(0, 1.7fr);
+  align-items: center;
   gap: 30px;
   padding: 35px 0;
 }
@@ -674,8 +680,8 @@ a:focus-visible {
 
 .search-input {
   display: flex;
-  align-items: center;
   flex: 1;
+  align-items: center;
   gap: 10px;
   min-width: 0;
   min-height: 45px;
@@ -692,7 +698,7 @@ a:focus-visible {
 
 .search-input:focus-within {
   border-color: #8B5CF6;
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, .1);
+  box-shadow: 0 0 0 3px rgba(139,92,246,.12);
 }
 
 .search-input input {
@@ -711,7 +717,7 @@ a:focus-visible {
   color: #64748B;
 }
 
-/* FILTRY */
+/* SZYBKIE FILTRY */
 
 .genre-filters {
   display: flex;
@@ -729,12 +735,15 @@ a:focus-visible {
   color: #94A3B8;
   font-size: 11px;
   cursor: pointer;
-  transition: background .2s;
+  transition:
+    background .2s,
+    border-color .2s,
+    color .2s;
 }
 
 .genre-filters button:hover {
-  color: #F8FAFC;
   border-color: #8B5CF6;
+  color: #F8FAFC;
 }
 
 .genre-filters button.selected {
@@ -760,35 +769,40 @@ a:focus-visible {
 .section-label {
   display: block;
   margin-bottom: 9px;
-  color: #A78BFA;
+  color: #C4B5FD;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 1.6px;
 }
 
-.section-heading a {
+.section-link {
+  padding: 0;
+  background: transparent;
+  border: none;
   color: #C4B5FD;
   font-size: 12px;
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
+  cursor: pointer;
 }
 
-.section-heading a:hover {
+.section-link:hover {
   color: #FFFFFF;
 }
 
-/* SIATKA GIER I KATEGORII */
+/* SIATKI */
 
 .games-grid,
 .categories-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns:
+    repeat(4, minmax(0, 1fr));
   align-items: stretch;
   gap: 18px;
 }
 
-/* WYROZNIONA GRA */
+/* POLECANA GRA */
 
 .featured-banner {
   display: flex;
@@ -797,8 +811,8 @@ a:focus-visible {
   margin-bottom: 38px;
   overflow: hidden;
   background-color: #151B2B;
-  background-size: cover;
   background-position: center;
+  background-size: cover;
   border: 1px solid #293244;
   border-radius: 14px;
 }
@@ -838,8 +852,8 @@ a:focus-visible {
 
 .featured-actions {
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
+  align-items: center;
   gap: 12px;
 }
 
@@ -847,7 +861,8 @@ a:focus-visible {
 
 .community-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns:
+    repeat(3, minmax(0, 1fr));
   gap: 18px;
 }
 
@@ -886,17 +901,25 @@ a:focus-visible {
   background: #31234F;
   border-radius: 50%;
   color: #C4B5FD;
-  font-weight: 800;
+  font-weight: 700;
 }
 
-.review-card h3 {
+.review-game {
+  display: block;
   margin: 22px 0 10px;
   color: #C4B5FD;
   font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.review-game:hover {
+  color: #FFFFFF;
 }
 
 .review-card p,
 .join-card p {
+  margin: 0 0 18px;
   color: #94A3B8;
   font-size: 13px;
   line-height: 1.8;
@@ -910,7 +933,7 @@ a:focus-visible {
   font-size: 11px;
 }
 
-/* REJESTRACJA */
+/* KARTA REJESTRACJI */
 
 .join-card {
   background: linear-gradient(
@@ -944,11 +967,12 @@ a:focus-visible {
   margin-top: auto;
 }
 
-/* PODSUMOWANIE */
+/* STATYSTYKI */
 
 .portal-stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns:
+    repeat(3, minmax(0, 1fr));
   gap: 20px;
   padding: 25px 0;
   border-top: 1px solid #293244;
@@ -981,7 +1005,8 @@ a:focus-visible {
 
 .stat-item strong {
   color: #F8FAFC;
-  font-size: 19px;
+  font-size: 22px;
+  font-weight: 800;
 }
 
 .stat-item div span {
@@ -991,9 +1016,9 @@ a:focus-visible {
 
 .demo-notice {
   margin: 15px 0 0;
-  color: #64748B;
-  text-align: center;
+  color: #94A3B8;
   font-size: 11px;
+  text-align: center;
 }
 
 /* BRAK WYNIKOW */
@@ -1007,9 +1032,11 @@ a:focus-visible {
   text-align: center;
 }
 
-.empty-state svg {
+.empty-icon {
+  display: block;
   margin-bottom: 15px;
   color: #A78BFA;
+  font-size: 42px;
 }
 
 .empty-state h3 {
@@ -1019,8 +1046,16 @@ a:focus-visible {
 }
 
 .empty-state p {
-  margin-bottom: 20px;
+  margin: 0 0 20px;
   font-size: 13px;
+}
+
+/* DOSTEPNOSC */
+
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid #C4B5FD;
+  outline-offset: 3px;
 }
 
 /* TABLETY */
@@ -1028,24 +1063,26 @@ a:focus-visible {
 @media (max-width: 1000px) {
 
   .discovery-section {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 20px;
   }
 
   .games-grid,
   .categories-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
   }
 
   .community-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
   }
 
   .join-card {
     grid-column: 1 / -1;
   }
 
-  .stat-item {
+  .portal-stats {
     gap: 10px;
   }
 
@@ -1087,7 +1124,6 @@ a:focus-visible {
     overflow-x: auto;
     padding-bottom: 7px;
     scrollbar-width: thin;
-    scrollbar-color: #293244 transparent;
   }
 
   .genre-filters button {
@@ -1107,8 +1143,8 @@ a:focus-visible {
     margin-bottom: 16px;
   }
 
-  .section-heading h2,
-  .discovery-heading h2 {
+  .discovery-heading h2,
+  .section-heading h2 {
     font-size: 21px;
   }
 
@@ -1140,7 +1176,7 @@ a:focus-visible {
   }
 
   .community-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 12px;
   }
 
@@ -1150,13 +1186,13 @@ a:focus-visible {
   }
 
   .portal-stats {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 18px;
     padding: 22px 0;
   }
 
   .stat-item strong {
-    font-size: 16px;
+    font-size: 19px;
   }
 
 }
