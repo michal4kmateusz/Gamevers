@@ -1,9 +1,23 @@
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import {
+  ref,
+  computed,
+  watch,
+  onMounted,
+  onUnmounted
+} from 'vue'
+
 import { RouterLink } from 'vue-router'
 
-const emit = defineEmits(['add-to-library'])
+import {
+  useLibraryStore,
+  LIBRARY_STATUSES
+} from '../../stores/libraryStore'
+
+const libraryStore = useLibraryStore()
+
+/* POLECANE GRY */
 
 const slides = [
   {
@@ -38,22 +52,95 @@ const slides = [
   }
 ]
 
+/* STAN SLAJDERA */
+
 const activeIndex = ref(0)
 const paused = ref(false)
 const hovered = ref(false)
 const focused = ref(false)
 
-const activeSlide = computed(
-  () => slides[activeIndex.value]
+const activeSlide = computed(() =>
+  slides[activeIndex.value]
 )
 
-const currentNumber = computed(
-  () => String(activeIndex.value + 1).padStart(2, '0')
+const currentNumber = computed(() =>
+  String(activeIndex.value + 1).padStart(2, '0')
 )
 
-const totalNumber = String(slides.length).padStart(2, '0')
+const totalNumber = String(
+  slides.length
+).padStart(2, '0')
 
 let timer = null
+
+/* BIBLIOTEKA */
+
+const isSaved = computed(() =>
+  libraryStore.hasGame(activeSlide.value.id)
+)
+
+const currentStatus = computed(() =>
+  libraryStore.getStatus(activeSlide.value.id)
+)
+
+const statusInformation = computed(() =>
+  LIBRARY_STATUSES.find(
+    status => status.value === currentStatus.value
+  ) || null
+)
+
+/* POWIADOMIENIA */
+
+const notification = ref('')
+const notificationType = ref('success')
+
+let notificationTimer = null
+
+function showNotification(
+  message,
+  type = 'success'
+) {
+  clearTimeout(notificationTimer)
+
+  notification.value = message
+  notificationType.value = type
+
+  notificationTimer = setTimeout(() => {
+    notification.value = ''
+  }, 3500)
+}
+
+/* DODAWANIE I USUWANIE GRY */
+
+function toggleLibrary() {
+  const game = activeSlide.value
+
+  const wasSaved = libraryStore.hasGame(
+    game.id
+  )
+
+  const success = libraryStore.toggleGame(
+    game.id
+  )
+
+  if (!success) {
+    showNotification(
+      libraryStore.error ||
+      'Nie udało się zapisać zmian.',
+      'error'
+    )
+
+    return
+  }
+
+  showNotification(
+    wasSaved
+      ? `Usunięto ${game.title} z biblioteki.`
+      : `Dodano ${game.title} do biblioteki.`
+  )
+}
+
+/* STEROWANIE SLAJDEREM */
 
 function nextSlide() {
   activeIndex.value =
@@ -75,10 +162,24 @@ function toggleAutoplay() {
 }
 
 function handleFocusOut(event) {
-  if (!event.currentTarget.contains(event.relatedTarget)) {
+  if (
+    !event.currentTarget.contains(
+      event.relatedTarget
+    )
+  ) {
     focused.value = false
   }
 }
+
+/* RESET POWIADOMIENIA */
+
+watch(activeIndex, () => {
+  notification.value = ''
+
+  clearTimeout(notificationTimer)
+})
+
+/* AUTOMATYCZNE SLAJDY */
 
 onMounted(() => {
   paused.value = window.matchMedia(
@@ -97,10 +198,14 @@ onMounted(() => {
   }, 6500)
 })
 
+/* CZYSZCZENIE TIMEROW */
+
 onUnmounted(() => {
   if (timer !== null) {
     window.clearInterval(timer)
   }
+
+  clearTimeout(notificationTimer)
 })
 </script>
 
@@ -117,6 +222,7 @@ onUnmounted(() => {
     <!-- GRAFIKA -->
 
     <Transition name="hero-fade">
+
       <div
         :key="activeSlide.id"
         class="hero-background"
@@ -125,6 +231,7 @@ onUnmounted(() => {
         }"
         aria-hidden="true"
       ></div>
+
     </Transition>
 
     <div class="hero-overlay"></div>
@@ -134,11 +241,17 @@ onUnmounted(() => {
     <div class="hero-content">
 
       <div class="hero-badge">
+
         <span>✦</span>
+
         WYBÓR REDAKCJI
+
       </div>
 
-      <Transition name="content-fade" mode="out-in">
+      <Transition
+        name="content-fade"
+        mode="out-in"
+      >
 
         <div
           :key="activeSlide.id"
@@ -157,6 +270,8 @@ onUnmounted(() => {
             {{ activeSlide.description }}
           </p>
 
+          <!-- INFORMACJE O GRZE -->
+
           <div class="hero-metadata">
 
             <span class="rating">
@@ -173,31 +288,120 @@ onUnmounted(() => {
 
           </div>
 
+          <!-- PRZYCISKI -->
+
           <div class="hero-actions">
 
             <RouterLink
-              :to="{
-                path: '/games',
-                query: {
-                  search: activeSlide.title
-                }
-              }"
+              :to="`/games/${activeSlide.id}`"
               class="primary-button"
             >
+
               Odkryj grę
+
               <span>→</span>
+
             </RouterLink>
 
             <button
               type="button"
               class="secondary-button"
-              @click="emit('add-to-library', activeSlide)"
+              :class="{ saved: isSaved }"
+              :aria-pressed="isSaved"
+              :aria-label="
+                isSaved
+                  ? `Usuń ${activeSlide.title} z biblioteki`
+                  : `Dodaj ${activeSlide.title} do biblioteki`
+              "
+              @click="toggleLibrary"
             >
-              Do biblioteki
-              <span>+</span>
+
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                :fill="isSaved ? 'currentColor' : 'none'"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M6 3h12v18l-6-4-6 4z"/>
+              </svg>
+
+              {{
+                isSaved
+                  ? 'Usuń z biblioteki'
+                  : 'Do biblioteki'
+              }}
+
+              <span>
+                {{ isSaved ? '−' : '+' }}
+              </span>
+
             </button>
 
           </div>
+
+          <!-- STATUS BIBLIOTEKI -->
+
+          <div
+            v-if="isSaved && statusInformation"
+            class="saved-information"
+          >
+
+            <span
+              class="saved-status"
+              :style="{
+                color: statusInformation.color
+              }"
+            >
+
+              <span class="status-dot"></span>
+
+              {{ statusInformation.label }}
+
+            </span>
+
+            <RouterLink
+              to="/library"
+              class="library-link"
+            >
+              Moja biblioteka →
+            </RouterLink>
+
+          </div>
+
+        </div>
+
+      </Transition>
+
+      <!-- POWIADOMIENIA -->
+
+      <Transition name="notification-fade">
+
+        <div
+          v-if="notification"
+          class="hero-notification"
+          :class="notificationType"
+          role="status"
+        >
+
+          <span class="notification-icon">
+            {{ notificationType === 'success' ? '✓' : '!' }}
+          </span>
+
+          <span class="notification-message">
+            {{ notification }}
+          </span>
+
+          <button
+            type="button"
+            aria-label="Zamknij powiadomienie"
+            @click="notification = ''"
+          >
+            ×
+          </button>
 
         </div>
 
@@ -279,6 +483,9 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+
+/* GLOWNY BANER */
+
 .home-hero {
   position: relative;
   isolation: isolate;
@@ -411,7 +618,7 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 18px;
+  gap: 10px;
   min-height: 43px;
   padding: 11px 18px;
   border-radius: 7px;
@@ -419,10 +626,15 @@ onUnmounted(() => {
   font-size: 13px;
   font-weight: 600;
   text-decoration: none;
-  transition: background .2s;
+  cursor: pointer;
+  transition:
+    background .2s,
+    border-color .2s,
+    color .2s;
 }
 
 .primary-button {
+  gap: 18px;
   background: #8B5CF6;
   border: 1px solid #8B5CF6;
   box-shadow: 0 5px 20px rgba(139, 92, 246, .18);
@@ -439,6 +651,115 @@ onUnmounted(() => {
 
 .secondary-button:hover {
   background: #20283B;
+  border-color: #8B5CF6;
+}
+
+.secondary-button.saved {
+  background: #31234F;
+  border-color: #8B5CF6;
+  color: #E9D5FF;
+}
+
+.secondary-button.saved:hover {
+  background: #3D222B;
+  border-color: #991B1B;
+  color: #FCA5A5;
+}
+
+.secondary-button svg {
+  flex-shrink: 0;
+}
+
+/* STATUS BIBLIOTEKI */
+
+.saved-information {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.saved-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  background: rgba(11, 15, 25, .8);
+  border: 1px solid #44306B;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.status-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  background: currentColor;
+  border-radius: 50%;
+}
+
+.library-link {
+  color: #C4B5FD;
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.library-link:hover {
+  color: #FFFFFF;
+}
+
+/* POWIADOMIENIA */
+
+.hero-notification {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 460px;
+  margin-top: 15px;
+  padding: 11px 13px;
+  background: #143529;
+  border: 1px solid #166534;
+  border-radius: 7px;
+  color: #86EFAC;
+  font-size: 12px;
+}
+
+.hero-notification.error {
+  background: #3D222B;
+  border-color: #991B1B;
+  color: #FCA5A5;
+}
+
+.notification-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 25px;
+  height: 25px;
+  background: rgba(255,255,255,.07);
+  border-radius: 50%;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.notification-message {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.hero-notification button {
+  flex-shrink: 0;
+  padding: 2px 5px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 20px;
+  cursor: pointer;
 }
 
 /* STEROWANIE */
@@ -468,6 +789,7 @@ onUnmounted(() => {
   padding: 0;
   background: transparent;
   border: none;
+  cursor: pointer;
   transition: width .2s;
 }
 
@@ -498,7 +820,14 @@ onUnmounted(() => {
   border: none;
   color: #94A3B8;
   font-size: 14px;
+  cursor: pointer;
 }
+
+.pause-button:hover {
+  color: #FFFFFF;
+}
+
+/* STRZALKI */
 
 .hero-arrows {
   position: absolute;
@@ -519,6 +848,7 @@ onUnmounted(() => {
   border-radius: 7px;
   color: #FFFFFF;
   font-size: 24px;
+  cursor: pointer;
 }
 
 .hero-arrows button:hover {
@@ -534,6 +864,8 @@ onUnmounted(() => {
   font-weight: 600;
   letter-spacing: 1.5px;
 }
+
+/* DOSTEPNOSC */
 
 button:focus-visible,
 a:focus-visible {
@@ -563,9 +895,23 @@ a:focus-visible {
   opacity: 0;
 }
 
+.notification-fade-enter-active,
+.notification-fade-leave-active {
+  transition:
+    opacity .2s ease,
+    transform .2s ease;
+}
+
+.notification-fade-enter-from,
+.notification-fade-leave-to {
+  opacity: 0;
+  transform: translateY(5px);
+}
+
 /* TABLETY */
 
 @media (max-width: 900px) {
+
   .home-hero {
     min-height: 420px;
   }
@@ -582,11 +928,13 @@ a:focus-visible {
   .hero-background {
     background-position: 65% center;
   }
+
 }
 
 /* TELEFONY */
 
 @media (max-width: 600px) {
+
   .home-hero {
     display: block;
     min-height: auto;
@@ -654,6 +1002,27 @@ a:focus-visible {
     min-height: 44px;
   }
 
+  .saved-information {
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .saved-status {
+    padding: 5px 8px;
+    font-size: 10px;
+  }
+
+  .library-link {
+    font-size: 10px;
+  }
+
+  .hero-notification {
+    margin-top: 12px;
+    padding: 10px;
+    font-size: 11px;
+  }
+
   .hero-controls {
     justify-content: center;
     margin-top: 16px;
@@ -668,9 +1037,13 @@ a:focus-visible {
   .hero-caption {
     display: none;
   }
+
 }
 
+/* MALE TELEFONY */
+
 @media (max-width: 360px) {
+
   .hero-content {
     padding-right: 15px;
     padding-left: 15px;
@@ -679,11 +1052,23 @@ a:focus-visible {
   .hero-title {
     font-size: 25px;
   }
+
+  .saved-information {
+    gap: 7px;
+  }
+
 }
 
+/* OGRANICZENIE ANIMACJI */
+
 @media (prefers-reduced-motion: reduce) {
-  * {
+
+  *,
+  *::before,
+  *::after {
     transition: none !important;
   }
+
 }
+
 </style>
