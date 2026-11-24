@@ -5,6 +5,7 @@ import { RouterLink, useRouter } from 'vue-router'
 
 import HomeHero from '../components/home/HomeHero.vue'
 import PopularGameCard from '../components/games/PopularGameCard.vue'
+import GenreCard from '../components/games/GenreCard.vue'
 
 const router = useRouter()
 
@@ -64,19 +65,23 @@ const genres = [
 const categories = [
   {
     name: 'RPG',
-    image: steamImage(1086940)
+    image: steamImage(1086940),
+    description: 'Twoja postać. Twoja historia.'
   },
   {
     name: 'Akcja',
-    image: steamImage(1145360)
+    image: steamImage(1145360),
+    description: 'Dynamiczna rozgrywka i wyzwania.'
   },
   {
     name: 'Otwarty świat',
-    image: steamImage(1245620)
+    image: steamImage(1245620),
+    description: 'Odkrywaj bez ograniczeń.'
   },
   {
     name: 'Niezależne',
-    image: steamImage(367520)
+    image: steamImage(367520),
+    description: 'Małe studia. Wielkie pomysły.'
   }
 ]
 
@@ -97,7 +102,7 @@ const reviews = [
   }
 ]
 
-/* FILTROWANIE GIER */
+/* FILTROWANIE */
 
 const filteredGames = computed(() => {
   const query = search.value.trim().toLowerCase()
@@ -129,15 +134,6 @@ function browseGames() {
       ...(activeGenre.value !== 'Wszystkie gry'
         ? { genre: activeGenre.value }
         : {})
-    }
-  })
-}
-
-function selectCategory(category) {
-  router.push({
-    path: '/games',
-    query: {
-      genre: category
     }
   })
 }
@@ -265,8 +261,6 @@ function handleAddToLibrary() {
 
         </div>
 
-        <!-- NOWY KOMPONENT KARTY -->
-
         <div
           v-if="filteredGames.length"
           class="games-grid"
@@ -280,8 +274,6 @@ function handleAddToLibrary() {
           />
 
         </div>
-
-        <!-- BRAK WYNIKOW -->
 
         <div
           v-else
@@ -320,7 +312,7 @@ function handleAddToLibrary() {
 
       </section>
 
-      <!-- KATEGORIE -->
+      <!-- NOWE KARTY KATEGORII -->
 
       <section class="home-section">
 
@@ -350,27 +342,11 @@ function handleAddToLibrary() {
 
         <div class="categories-grid">
 
-          <button
+          <GenreCard
             v-for="category in categories"
             :key="category.name"
-            type="button"
-            class="category-card"
-            :style="{
-              backgroundImage:
-                `linear-gradient(90deg, rgba(11,15,25,.95), rgba(11,15,25,.35)), url('${category.image}')`
-            }"
-            @click="selectCategory(category.name)"
-          >
-
-            <strong>
-              {{ category.name }}
-            </strong>
-
-            <span>
-              Odkrywaj →
-            </span>
-
-          </button>
+            :genre="category"
+          />
 
         </div>
 
@@ -802,7 +778,7 @@ a:focus-visible {
   color: #FFFFFF;
 }
 
-/* SIATKA KOMPONENTOW */
+/* SIATKA GIER I KATEGORII */
 
 .games-grid,
 .categories-grid {
@@ -810,45 +786,6 @@ a:focus-visible {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: stretch;
   gap: 18px;
-}
-
-/* KATEGORIE */
-
-.category-card {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  min-width: 0;
-  min-height: 130px;
-  padding: 20px;
-  background-color: #151B2B;
-  background-size: cover;
-  background-position: center;
-  border: 1px solid #293244;
-  border-radius: 12px;
-  color: #F8FAFC;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    transform .2s,
-    border-color .2s;
-}
-
-.category-card:hover {
-  transform: translateY(-3px);
-  border-color: #8B5CF6;
-}
-
-.category-card strong {
-  font-size: 19px;
-  line-height: 1.3;
-}
-
-.category-card span {
-  margin-top: 10px;
-  color: #CBD5E1;
-  font-size: 12px;
 }
 
 /* WYROZNIONA GRA */
@@ -894,7 +831,7 @@ a:focus-visible {
 
 .featured-content p {
   margin: 15px 0 20px;
-  color: #94A3B8;
+  color: #CBD5E1;
   font-size: 13px;
   line-height: 1.7;
 }
@@ -1184,20 +1121,6 @@ a:focus-visible {
     gap: 11px;
   }
 
-  .category-card {
-    min-height: 110px;
-    padding: 14px;
-    border-radius: 10px;
-  }
-
-  .category-card strong {
-    font-size: 16px;
-  }
-
-  .category-card span {
-    font-size: 11px;
-  }
-
   .featured-banner {
     min-height: 280px;
     margin-bottom: 30px;
@@ -1252,23 +1175,15 @@ a:focus-visible {
     gap: 8px;
   }
 
-  .category-card strong {
-    font-size: 14px;
-  }
-
 }
 
 /* OGRANICZENIE ANIMACJI */
 
 @media (prefers-reduced-motion: reduce) {
 
-  .category-card,
-  .primary-button {
+  .primary-button,
+  .genre-filters button {
     transition: none;
-  }
-
-  .category-card:hover {
-    transform: none;
   }
 
 }
