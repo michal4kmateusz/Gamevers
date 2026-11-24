@@ -2,9 +2,12 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
+
 import HomeHero from '../components/home/HomeHero.vue'
+import PopularGameCard from '../components/games/PopularGameCard.vue'
 
 const router = useRouter()
+
 const search = ref('')
 const activeGenre = ref('Wszystkie gry')
 
@@ -38,7 +41,7 @@ const games = [
   },
   {
     title: 'Hades',
-    genre: 'Roguelike · Akcja',
+    genre: 'Roguelike · Akcja · Niezależne',
     rating: '9.1',
     image: steamImage(1145360),
     platforms: 'PC · PlayStation · Xbox'
@@ -51,6 +54,7 @@ const genres = [
   'Wszystkie gry',
   'RPG',
   'Akcja',
+  'Otwarty świat',
   'Przygodowe',
   'Strategiczne',
   'Niezależne',
@@ -93,12 +97,12 @@ const reviews = [
   }
 ]
 
-/* FILTROWANIE */
+/* FILTROWANIE GIER */
 
 const filteredGames = computed(() => {
   const query = search.value.trim().toLowerCase()
 
-  return games.filter((game) => {
+  return games.filter(game => {
     const matchesSearch =
       game.title.toLowerCase().includes(query) ||
       game.genre.toLowerCase().includes(query)
@@ -130,17 +134,17 @@ function browseGames() {
 }
 
 function selectCategory(category) {
-  activeGenre.value = category
-  browseGames()
-}
-
-function openGame(game) {
   router.push({
     path: '/games',
     query: {
-      search: game.title
+      genre: category
     }
   })
+}
+
+function resetFilters() {
+  search.value = ''
+  activeGenre.value = 'Wszystkie gry'
 }
 
 function handleAddToLibrary() {
@@ -261,101 +265,41 @@ function handleAddToLibrary() {
 
         </div>
 
+        <!-- NOWY KOMPONENT KARTY -->
+
         <div
           v-if="filteredGames.length"
           class="games-grid"
         >
 
-          <article
+          <PopularGameCard
             v-for="game in filteredGames"
             :key="game.title"
-            class="game-card"
-          >
-
-            <div class="game-image">
-
-              <RouterLink
-                :to="{
-                  path: '/games',
-                  query: {
-                    search: game.title
-                  }
-                }"
-                class="game-image-link"
-              >
-
-                <img
-                  :src="game.image"
-                  :alt="game.title"
-                  loading="lazy"
-                />
-
-              </RouterLink>
-
-              <span class="card-rating">
-                ★ {{ game.rating }}
-              </span>
-
-              <button
-                type="button"
-                class="add-game"
-                :aria-label="`Przejdź do biblioteki: ${game.title}`"
-                @click="handleAddToLibrary"
-              >
-                +
-              </button>
-
-            </div>
-
-            <div class="game-content">
-
-              <RouterLink
-                :to="{
-                  path: '/games',
-                  query: {
-                    search: game.title
-                  }
-                }"
-                class="game-name"
-              >
-
-                <h3>{{ game.title }}</h3>
-
-              </RouterLink>
-
-              <p>{{ game.genre }}</p>
-
-              <div class="game-footer">
-
-                <span>
-                  {{ game.platforms }}
-                </span>
-
-                <button
-                  type="button"
-                  class="game-arrow"
-                  :aria-label="`Odkryj ${game.title}`"
-                  @click="openGame(game)"
-                >
-                  →
-                </button>
-
-              </div>
-
-            </div>
-
-          </article>
+            :game="game"
+            @add-to-library="handleAddToLibrary"
+          />
 
         </div>
+
+        <!-- BRAK WYNIKOW -->
 
         <div
           v-else
           class="empty-state"
         >
 
-          <span class="empty-icon">
-            ⌕
-          </span>
+          <svg
+            width="42"
+            height="42"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            aria-hidden="true"
+          >
+            <circle cx="11" cy="11" r="7"/>
+            <path d="m16 16 5 5"/>
+          </svg>
 
           <h3>Nie znaleziono gier</h3>
 
@@ -367,10 +311,7 @@ function handleAddToLibrary() {
           <button
             type="button"
             class="primary-button"
-            @click="
-              search = '';
-              activeGenre = 'Wszystkie gry'
-            "
+            @click="resetFilters"
           >
             Wyczyść filtry
           </button>
@@ -379,7 +320,7 @@ function handleAddToLibrary() {
 
       </section>
 
-      <!-- KATEGORIE I GATUNKI -->
+      <!-- KATEGORIE -->
 
       <section class="home-section">
 
@@ -388,7 +329,7 @@ function handleAddToLibrary() {
           <div>
 
             <span class="section-label">
-              ZNAJDZ SWOJ GATUNEK
+              ZNAJDŹ SWÓJ GATUNEK
             </span>
 
             <h2>
@@ -549,7 +490,7 @@ function handleAddToLibrary() {
 
           </article>
 
-          <!-- ZACHECENIE DO REJESTRACJI -->
+          <!-- REJESTRACJA -->
 
           <article class="join-card">
 
@@ -600,7 +541,7 @@ function handleAddToLibrary() {
 
       </section>
 
-      <!-- PODSUMOWANIE PORTALU -->
+      <!-- PODSUMOWANIE -->
 
       <section class="portal-stats">
 
@@ -676,11 +617,6 @@ function handleAddToLibrary() {
   margin: 0 auto;
 }
 
-.home-page p {
-  font-size: 13px;
-  line-height: 1.7;
-}
-
 /* PRZYCISKI */
 
 .primary-button {
@@ -713,8 +649,7 @@ a:focus-visible {
 
 /* OCENY */
 
-.rating,
-.card-rating {
+.rating {
   display: inline-block;
   padding: 5px 9px;
   background: #123443;
@@ -749,6 +684,7 @@ a:focus-visible {
   margin: 0;
   color: #94A3B8;
   font-size: 13px;
+  line-height: 1.7;
 }
 
 .discovery-content {
@@ -866,148 +802,14 @@ a:focus-visible {
   color: #FFFFFF;
 }
 
-/* SIATKA GIER */
+/* SIATKA KOMPONENTOW */
 
 .games-grid,
 .categories-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
   gap: 18px;
-}
-
-/* KARTY GIER */
-
-.game-card {
-  min-width: 0;
-  overflow: hidden;
-  background: #151B2B;
-  border: 1px solid #293244;
-  border-radius: 12px;
-  transition:
-    transform .2s,
-    border-color .2s,
-    box-shadow .2s;
-}
-
-.game-card:hover {
-  transform: translateY(-4px);
-  border-color: #8B5CF6;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .2);
-}
-
-.game-image {
-  position: relative;
-  overflow: hidden;
-  aspect-ratio: 16 / 9;
-  background: #24203C;
-}
-
-.game-image-link {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.game-image img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform .35s;
-}
-
-.game-card:hover .game-image img {
-  transform: scale(1.04);
-}
-
-.card-rating {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-}
-
-.add-game {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  background: rgba(11, 15, 25, .85);
-  border: 1px solid #475569;
-  border-radius: 7px;
-  color: #FFFFFF;
-  font-size: 20px;
-  cursor: pointer;
-}
-
-.add-game:hover {
-  background: #8B5CF6;
-  border-color: #8B5CF6;
-}
-
-.game-content {
-  padding: 17px;
-}
-
-.game-name {
-  display: block;
-  color: #F8FAFC;
-  text-decoration: none;
-}
-
-.game-name:hover {
-  color: #C4B5FD;
-}
-
-.game-content h3 {
-  min-height: 38px;
-  margin: 0 0 8px;
-  font-size: 15px;
-  line-height: 1.3;
-  overflow-wrap: anywhere;
-}
-
-.game-content p {
-  margin: 0;
-  color: #94A3B8;
-  font-size: 12px;
-}
-
-.game-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 18px;
-  padding-top: 12px;
-  border-top: 1px solid #293244;
-  color: #94A3B8;
-  font-size: 10px;
-}
-
-.game-footer span {
-  min-width: 0;
-  line-height: 1.6;
-}
-
-.game-arrow {
-  flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  background: #20263A;
-  border: 1px solid #293244;
-  border-radius: 6px;
-  color: #C4B5FD;
-  font-size: 16px;
-}
-
-.game-arrow:hover {
-  background: #8B5CF6;
-  color: #FFFFFF;
 }
 
 /* KATEGORIE */
@@ -1092,7 +894,7 @@ a:focus-visible {
 
 .featured-content p {
   margin: 15px 0 20px;
-  color: #CBD5E1;
+  color: #94A3B8;
   font-size: 13px;
   line-height: 1.7;
 }
@@ -1254,7 +1056,7 @@ a:focus-visible {
   margin: 15px 0 0;
   color: #64748B;
   text-align: center;
-  font-size: 11px !important;
+  font-size: 11px;
 }
 
 /* BRAK WYNIKOW */
@@ -1268,11 +1070,9 @@ a:focus-visible {
   text-align: center;
 }
 
-.empty-icon {
-  display: block;
+.empty-state svg {
   margin-bottom: 15px;
   color: #A78BFA;
-  font-size: 42px;
 }
 
 .empty-state h3 {
@@ -1384,49 +1184,6 @@ a:focus-visible {
     gap: 11px;
   }
 
-  .game-card {
-    border-radius: 10px;
-  }
-
-  .game-content {
-    padding: 12px;
-  }
-
-  .game-content h3 {
-    min-height: 34px;
-    font-size: 13px;
-  }
-
-  .game-content p {
-    font-size: 10px;
-  }
-
-  .card-rating {
-    top: 7px;
-    left: 7px;
-    padding: 4px 6px;
-    font-size: 10px;
-  }
-
-  .add-game {
-    top: 7px;
-    right: 7px;
-    width: 29px;
-    height: 29px;
-  }
-
-  .game-footer {
-    gap: 5px;
-    margin-top: 12px;
-    padding-top: 10px;
-    font-size: 9px;
-  }
-
-  .game-arrow {
-    width: 27px;
-    height: 27px;
-  }
-
   .category-card {
     min-height: 110px;
     padding: 14px;
@@ -1479,10 +1236,6 @@ a:focus-visible {
     font-size: 16px;
   }
 
-  .stat-item div span {
-    font-size: 12px;
-  }
-
 }
 
 /* MALE TELEFONY */
@@ -1499,18 +1252,6 @@ a:focus-visible {
     gap: 8px;
   }
 
-  .game-content {
-    padding: 10px;
-  }
-
-  .game-content h3 {
-    font-size: 12px;
-  }
-
-  .game-footer {
-    flex-wrap: wrap;
-  }
-
   .category-card strong {
     font-size: 14px;
   }
@@ -1521,18 +1262,15 @@ a:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
 
-  .game-card,
-  .game-image img,
   .category-card,
   .primary-button {
     transition: none;
   }
 
-  .game-card:hover,
-  .category-card:hover,
-  .game-card:hover .game-image img {
+  .category-card:hover {
     transform: none;
   }
 
 }
+
 </style>
