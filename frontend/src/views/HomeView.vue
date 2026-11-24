@@ -1,46 +1,18 @@
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
+import HomeHero from '../components/home/HomeHero.vue'
 
 const router = useRouter()
 const search = ref('')
 const activeGenre = ref('Wszystkie gry')
-const activeSlide = ref(0)
 
 function steamImage(id, file = 'header.jpg') {
   return `https://cdn.akamai.steamstatic.com/steam/apps/${id}/${file}`
 }
 
-const slides = [
-  {
-    title: 'Night City nie śpi. Ty też nie zechcesz.',
-    game: 'Cyberpunk 2077',
-    description: 'Zanurz się w otwartym świecie przyszłości. Zbuduj swoją legendę w mieście, w którym wszystko ma swoją cenę.',
-    image: steamImage(1091500, 'library_hero.jpg'),
-    rating: '9.8',
-    genre: 'RPG akcji',
-    platforms: 'PC · PS5 · Xbox'
-  },
-  {
-    title: 'Odkryj świat pełen tajemnic.',
-    game: 'ELDEN RING',
-    description: 'Wyrusz w niezwykłą podróż przez ogromny świat fantasy.',
-    image: steamImage(1245620, 'library_hero.jpg'),
-    rating: '9.3',
-    genre: 'RPG',
-    platforms: 'PC · PlayStation · Xbox'
-  },
-  {
-    title: 'Każda decyzja zmienia historię.',
-    game: "Baldur's Gate 3",
-    description: 'Zbierz drużynę i odkryj świat pełen przygód oraz niezwykłych postaci.',
-    image: steamImage(1086940, 'library_hero.jpg'),
-    rating: '9.6',
-    genre: 'RPG',
-    platforms: 'PC · PS5 · Xbox'
-  }
-]
+/* POPULARNE GRY */
 
 const games = [
   {
@@ -73,6 +45,8 @@ const games = [
   }
 ]
 
+/* GATUNKI */
+
 const genres = [
   'Wszystkie gry',
   'RPG',
@@ -102,6 +76,8 @@ const categories = [
   }
 ]
 
+/* RECENZJE DEMONSTRACYJNE */
+
 const reviews = [
   {
     author: 'NeonRaven',
@@ -117,9 +93,7 @@ const reviews = [
   }
 ]
 
-const currentSlide = computed(
-  () => slides[activeSlide.value]
-)
+/* FILTROWANIE */
 
 const filteredGames = computed(() => {
   const query = search.value.trim().toLowerCase()
@@ -131,15 +105,15 @@ const filteredGames = computed(() => {
 
     const matchesGenre =
       activeGenre.value === 'Wszystkie gry' ||
-      game.genre.includes(activeGenre.value)
+      game.genre.toLowerCase().includes(
+        activeGenre.value.toLowerCase()
+      )
 
     return matchesSearch && matchesGenre
   })
 })
 
-function selectSlide(index) {
-  activeSlide.value = index
-}
+/* NAWIGACJA */
 
 function browseGames() {
   router.push({
@@ -160,109 +134,76 @@ function selectCategory(category) {
   browseGames()
 }
 
-let slideTimer
+function openGame(game) {
+  router.push({
+    path: '/games',
+    query: {
+      search: game.title
+    }
+  })
+}
 
-onMounted(() => {
-  slideTimer = setInterval(() => {
-    activeSlide.value =
-      (activeSlide.value + 1) % slides.length
-  }, 8000)
-})
-
-onUnmounted(() => {
-  clearInterval(slideTimer)
-})
+function handleAddToLibrary() {
+  router.push('/library')
+}
 </script>
 
 <template>
   <main class="home-page">
+
     <div class="home-container">
 
-      <!-- GŁÓWNY BANER -->
-      <section
-        class="hero"
-        :style="{
-          backgroundImage:
-            `linear-gradient(90deg, #0B0F19 0%, rgba(11,15,25,.85) 30%, rgba(11,15,25,.12) 100%), url('${currentSlide.image}')`
-        }"
-      >
-        <div class="hero-content">
-          <span class="editor-badge">
-            ✦ WYBÓR REDAKCJI
-          </span>
+      <!-- GLOWNY BANER -->
 
-          <h1>{{ currentSlide.title }}</h1>
-
-          <span class="hero-game">
-            {{ currentSlide.game }}
-          </span>
-
-          <p>{{ currentSlide.description }}</p>
-
-          <div class="hero-meta">
-            <span class="rating">
-              ★ {{ currentSlide.rating }}
-            </span>
-
-            <span>{{ currentSlide.genre }}</span>
-            <span>{{ currentSlide.platforms }}</span>
-          </div>
-
-          <div class="hero-actions">
-            <RouterLink
-              to="/games"
-              class="primary-button"
-            >
-              Odkryj grę →
-            </RouterLink>
-
-            <RouterLink
-              to="/library"
-              class="secondary-button"
-            >
-              Do biblioteki +
-            </RouterLink>
-          </div>
-
-          <div class="slider-controls">
-            <span>0{{ activeSlide + 1 }}</span>
-
-            <button
-              v-for="(slide, index) in slides"
-              :key="slide.game"
-              type="button"
-              class="slider-dot"
-              :class="{
-                active: activeSlide === index
-              }"
-              :aria-label="`Pokaż ${slide.game}`"
-              :aria-pressed="activeSlide === index"
-              @click="selectSlide(index)"
-            ></button>
-
-            <span>03</span>
-          </div>
-        </div>
-      </section>
+      <HomeHero
+        @add-to-library="handleAddToLibrary"
+      />
 
       <!-- WYSZUKIWARKA -->
+
       <section class="discovery-section">
+
         <div class="discovery-heading">
+
           <h2>W co dziś zagrasz?</h2>
-          <p>Tysiące światów. Znajdź ten dla siebie.</p>
+
+          <p>
+            Tysiące światów.
+            Znajdź ten dla siebie.
+          </p>
+
         </div>
 
         <div class="discovery-content">
+
           <form
             class="search-form"
             @submit.prevent="browseGames"
           >
-            <input
-              v-model="search"
-              type="search"
-              aria-label="Szukaj gry"
-              placeholder="Wpisz tytuł, gatunek lub nazwę studia..."
-            />
+
+            <div class="search-input">
+
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="7"/>
+                <path d="m16 16 5 5"/>
+              </svg>
+
+              <input
+                v-model="search"
+                type="search"
+                aria-label="Szukaj gry"
+                placeholder="Wpisz tytuł lub gatunek..."
+              />
+
+            </div>
 
             <button
               type="submit"
@@ -270,9 +211,11 @@ onUnmounted(() => {
             >
               Przeglądaj gry →
             </button>
+
           </form>
 
           <div class="genre-filters">
+
             <button
               v-for="genre in genres"
               :key="genre"
@@ -285,83 +228,187 @@ onUnmounted(() => {
             >
               {{ genre }}
             </button>
+
           </div>
+
         </div>
+
       </section>
 
       <!-- POPULARNE GRY -->
+
       <section class="home-section">
+
         <div class="section-heading">
+
           <div>
+
+            <span class="section-label">
+              ODKRYWAJ
+            </span>
+
             <h2>Popularne teraz</h2>
-            <p>Tytuły, o których mówi społeczność.</p>
+
+            <p>
+              Tytuły, o których mówi społeczność.
+            </p>
+
           </div>
 
           <RouterLink to="/games">
             Zobacz wszystkie →
           </RouterLink>
+
         </div>
 
         <div
           v-if="filteredGames.length"
           class="games-grid"
         >
+
           <article
             v-for="game in filteredGames"
             :key="game.title"
             class="game-card"
           >
+
             <div class="game-image">
-              <img
-                :src="game.image"
-                :alt="game.title"
-                loading="lazy"
-              />
+
+              <RouterLink
+                :to="{
+                  path: '/games',
+                  query: {
+                    search: game.title
+                  }
+                }"
+                class="game-image-link"
+              >
+
+                <img
+                  :src="game.image"
+                  :alt="game.title"
+                  loading="lazy"
+                />
+
+              </RouterLink>
 
               <span class="card-rating">
                 ★ {{ game.rating }}
               </span>
 
-              <RouterLink
-                to="/library"
+              <button
+                type="button"
                 class="add-game"
-                aria-label="Przejdź do biblioteki"
+                :aria-label="`Przejdź do biblioteki: ${game.title}`"
+                @click="handleAddToLibrary"
               >
                 +
-              </RouterLink>
+              </button>
+
             </div>
 
             <div class="game-content">
-              <h3>{{ game.title }}</h3>
+
+              <RouterLink
+                :to="{
+                  path: '/games',
+                  query: {
+                    search: game.title
+                  }
+                }"
+                class="game-name"
+              >
+
+                <h3>{{ game.title }}</h3>
+
+              </RouterLink>
+
               <p>{{ game.genre }}</p>
 
               <div class="game-footer">
-                {{ game.platforms }}
+
+                <span>
+                  {{ game.platforms }}
+                </span>
+
+                <button
+                  type="button"
+                  class="game-arrow"
+                  :aria-label="`Odkryj ${game.title}`"
+                  @click="openGame(game)"
+                >
+                  →
+                </button>
+
               </div>
+
             </div>
+
           </article>
+
         </div>
 
-        <div v-else class="empty-state">
-          Nie znaleziono pasujących gier
-          w kolekcji demonstracyjnej.
+        <div
+          v-else
+          class="empty-state"
+        >
+
+          <span class="empty-icon">
+            ⌕
+          </span>
+
+          <h3>Nie znaleziono gier</h3>
+
+          <p>
+            Spróbuj wpisać inną nazwę
+            lub zmienić gatunek.
+          </p>
+
+          <button
+            type="button"
+            class="primary-button"
+            @click="
+              search = '';
+              activeGenre = 'Wszystkie gry'
+            "
+          >
+            Wyczyść filtry
+          </button>
+
         </div>
+
       </section>
 
-      <!-- GATUNKI -->
+      <!-- KATEGORIE I GATUNKI -->
+
       <section class="home-section">
+
         <div class="section-heading">
+
           <div>
-            <h2>Twój styl. Twoja rozgrywka.</h2>
-            <p>Odkrywaj według gatunku.</p>
+
+            <span class="section-label">
+              ZNAJDZ SWOJ GATUNEK
+            </span>
+
+            <h2>
+              Twój styl. Twoja rozgrywka.
+            </h2>
+
+            <p>
+              Odkrywaj według gatunku.
+            </p>
+
           </div>
 
           <RouterLink to="/games">
             Wszystkie gatunki →
           </RouterLink>
+
         </div>
 
         <div class="categories-grid">
+
           <button
             v-for="category in categories"
             :key="category.name"
@@ -369,93 +416,166 @@ onUnmounted(() => {
             class="category-card"
             :style="{
               backgroundImage:
-                `linear-gradient(90deg, rgba(11,15,25,.9), rgba(11,15,25,.35)), url('${category.image}')`
+                `linear-gradient(90deg, rgba(11,15,25,.95), rgba(11,15,25,.35)), url('${category.image}')`
             }"
             @click="selectCategory(category.name)"
           >
-            <strong>{{ category.name }}</strong>
-            <span>Odkrywaj →</span>
+
+            <strong>
+              {{ category.name }}
+            </strong>
+
+            <span>
+              Odkrywaj →
+            </span>
+
           </button>
+
         </div>
+
       </section>
 
-      <!-- WYRÓŻNIONA GRA -->
+      <!-- WYROZNIONA GRA -->
+
       <section
         class="featured-banner"
         :style="{
           backgroundImage:
-            `linear-gradient(90deg, #151B2B, rgba(11,15,25,.35)), url('${steamImage(367520, 'library_hero.jpg')}')`
+            `linear-gradient(90deg, #151B2B 0%, rgba(11,15,25,.75) 45%, rgba(11,15,25,.15) 100%), url('${steamImage(367520, 'library_hero.jpg')}')`
         }"
       >
+
         <div class="featured-content">
+
           <span class="featured-label">
             POZA GŁÓWNYM SZLAKIEM
           </span>
 
-          <h2>Mała gra. Ogromny świat.</h2>
+          <h2>
+            Mała gra. Ogromny świat.
+          </h2>
+
           <h3>Hollow Knight</h3>
 
           <p>
-            Zejdź do Hallownest. Zgub się
-            w pięknym, ręcznie rysowanym świecie.
+            Zejdź do Hallownest.
+            Zgub się w pięknym,
+            ręcznie rysowanym świecie.
           </p>
 
           <div class="featured-actions">
+
             <RouterLink
-              to="/games"
+              :to="{
+                path: '/games',
+                query: {
+                  search: 'Hollow Knight'
+                }
+              }"
               class="primary-button"
             >
-              Poznaj gry →
+              Poznaj grę →
             </RouterLink>
 
             <span class="rating">
               ★ 9.4
             </span>
+
           </div>
+
         </div>
+
       </section>
 
-      <!-- SPOŁECZNOŚĆ -->
+      <!-- SPOLECZNOSC -->
+
       <section class="home-section">
+
         <div class="section-heading">
+
           <div>
-            <h2>Gry łączą. Opinie mają znaczenie.</h2>
+
+            <span class="section-label">
+              SPOŁECZNOŚĆ
+            </span>
+
+            <h2>
+              Gry łączą. Opinie mają znaczenie.
+            </h2>
 
             <p>
               Sprawdź, co polecają inni gracze.
             </p>
+
           </div>
+
         </div>
 
         <div class="community-grid">
+
           <article
             v-for="review in reviews"
             :key="review.author"
             class="review-card"
           >
+
             <div class="review-header">
+
               <div class="avatar">
                 {{ review.author.charAt(0) }}
               </div>
 
-              <strong>{{ review.author }}</strong>
+              <strong>
+                {{ review.author }}
+              </strong>
 
               <span class="rating">
                 ★ {{ review.rating }}
               </span>
+
             </div>
 
-            <h3>{{ review.game }}</h3>
+            <h3>
+              {{ review.game }}
+            </h3>
 
-            <p>{{ review.content }}</p>
+            <p>
+              {{ review.content }}
+            </p>
 
             <div class="review-footer">
               Przykładowa recenzja
             </div>
+
           </article>
 
+          <!-- ZACHECENIE DO REJESTRACJI -->
+
           <article class="join-card">
-            <span class="join-icon">▥</span>
+
+            <div class="join-icon">
+
+              <svg
+                width="25"
+                height="25"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+                aria-hidden="true"
+              >
+                <rect
+                  x="2"
+                  y="6"
+                  width="20"
+                  height="12"
+                  rx="4"
+                />
+                <path d="M7 10v4M5 12h4"/>
+                <path d="M16 10h.01M19 13h.01"/>
+              </svg>
+
+            </div>
 
             <h2>
               Wszystkie Twoje gry.
@@ -473,26 +593,56 @@ onUnmounted(() => {
             >
               Załóż bezpłatne konto →
             </RouterLink>
+
           </article>
+
         </div>
+
       </section>
 
-      <!-- PODSUMOWANIE -->
+      <!-- PODSUMOWANIE PORTALU -->
+
       <section class="portal-stats">
-        <div>
-          <strong>Odkrywaj</strong>
-          <span>nowe gry</span>
+
+        <div class="stat-item">
+
+          <span class="stat-icon">
+            ◈
+          </span>
+
+          <div>
+            <strong>Odkrywaj</strong>
+            <span>nowe gry</span>
+          </div>
+
         </div>
 
-        <div>
-          <strong>Dołącz</strong>
-          <span>do społeczności</span>
+        <div class="stat-item">
+
+          <span class="stat-icon">
+            ◎
+          </span>
+
+          <div>
+            <strong>Dołącz</strong>
+            <span>do społeczności</span>
+          </div>
+
         </div>
 
-        <div>
-          <strong>Twórz</strong>
-          <span>własną kolekcję</span>
+        <div class="stat-item">
+
+          <span class="stat-icon">
+            ▥
+          </span>
+
+          <div>
+            <strong>Twórz</strong>
+            <span>własną kolekcję</span>
+          </div>
+
         </div>
+
       </section>
 
       <p class="demo-notice">
@@ -501,169 +651,97 @@ onUnmounted(() => {
       </p>
 
     </div>
+
   </main>
 </template>
 
 <style scoped>
+
+/* GLOWNY UKLAD */
+
 .home-page {
+  display: block;
+  width: 100%;
   min-height: 100vh;
+  padding: 16px 24px 45px;
   background: #0B0F19;
   color: #F8FAFC;
-  padding: 16px 24px 45px;
+  text-align: left;
 }
 
 .home-container {
+  width: 100%;
   max-width: 1400px;
+  min-width: 0;
   margin: 0 auto;
 }
 
-.hero {
-  min-height: 460px;
-  display: flex;
-  align-items: center;
-  background-size: cover;
-  background-position: center;
-  border: 1px solid #293244;
-  border-radius: 16px;
-  overflow: hidden;
-}
-
-.hero-content {
-  max-width: 590px;
-  padding: 45px;
-}
-
-.editor-badge {
-  display: inline-block;
-  padding: 8px 12px;
-  background: rgba(139, 92, 246, .2);
-  color: #C4B5FD;
-  border-radius: 5px;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 2px;
-}
-
-.hero h1 {
-  margin: 30px 0 20px;
-  font-size: clamp(32px, 4vw, 55px);
-  line-height: 1.1;
-  font-weight: 800;
-  letter-spacing: -1.5px;
-}
-
-.hero-game {
-  color: #22D3EE;
+.home-page p {
   font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 2px;
-  text-transform: uppercase;
+  line-height: 1.7;
 }
 
-.hero-content p {
-  max-width: 440px;
-  color: #CBD5E1;
-  font-size: 14px;
-  line-height: 1.8;
-}
+/* PRZYCISKI */
 
-.hero-meta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 15px;
-  color: #CBD5E1;
-  font-size: 12px;
-  margin: 20px 0;
-}
-
-.rating,
-.card-rating {
-  display: inline-block;
-  padding: 5px 9px;
-  background: #123443;
-  color: #67E8F9;
-  border-radius: 5px;
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.hero-actions,
-.featured-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.primary-button,
-.secondary-button {
+.primary-button {
   display: inline-flex;
-  justify-content: center;
   align-items: center;
-  box-sizing: border-box;
-  padding: 13px 22px;
+  justify-content: center;
+  min-height: 43px;
+  padding: 12px 20px;
+  background: #8B5CF6;
+  border: 1px solid #8B5CF6;
   border-radius: 8px;
+  box-shadow: 0 4px 18px rgba(139, 92, 246, .18);
   color: #FFFFFF;
   font-size: 13px;
   font-weight: 700;
   text-decoration: none;
   cursor: pointer;
-}
-
-.primary-button {
-  background: #8B5CF6;
-  border: 1px solid #8B5CF6;
-  box-shadow: 0 4px 18px rgba(139,92,246,.2);
+  transition: background .2s;
 }
 
 .primary-button:hover {
   background: #7C3AED;
 }
 
-.secondary-button {
-  background: #151B2B;
-  border: 1px solid #293244;
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid #C4B5FD;
+  outline-offset: 3px;
 }
 
-.slider-controls {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin-top: 35px;
-  font-size: 11px;
-  color: #CBD5E1;
-}
+/* OCENY */
 
-.slider-dot {
-  width: 25px;
-  height: 4px;
-  padding: 0;
-  border: 0;
+.rating,
+.card-rating {
+  display: inline-block;
+  padding: 5px 9px;
+  background: #123443;
   border-radius: 5px;
-  background: #475569;
-  cursor: pointer;
+  color: #67E8F9;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
-.slider-dot.active {
-  width: 50px;
-  background: #8B5CF6;
-}
+/* WYSZUKIWARKA */
 
 .discovery-section {
   display: grid;
   grid-template-columns: 1fr 1.7fr;
-  gap: 30px;
   align-items: start;
+  gap: 30px;
   padding: 35px 0;
 }
 
 .discovery-heading h2,
 .section-heading h2 {
   margin: 0 0 8px;
+  color: #F8FAFC;
   font-size: 24px;
   font-weight: 750;
+  line-height: 1.3;
 }
 
 .discovery-heading p,
@@ -673,26 +751,55 @@ onUnmounted(() => {
   font-size: 13px;
 }
 
+.discovery-content {
+  min-width: 0;
+}
+
 .search-form {
   display: flex;
   gap: 12px;
 }
 
-.search-form input {
+.search-input {
+  display: flex;
+  align-items: center;
   flex: 1;
+  gap: 10px;
   min-width: 0;
-  padding: 13px 16px;
+  min-height: 45px;
+  padding: 0 14px;
   background: #151B2B;
   border: 1px solid #293244;
   border-radius: 8px;
+  color: #94A3B8;
+}
+
+.search-input svg {
+  flex-shrink: 0;
+}
+
+.search-input:focus-within {
+  border-color: #8B5CF6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, .1);
+}
+
+.search-input input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  padding: 12px 0;
+  background: transparent;
+  border: none;
+  outline: none;
   color: #F8FAFC;
-  font: inherit;
   font-size: 13px;
 }
 
-.search-form input:focus {
-  outline: 1px solid #8B5CF6;
+.search-input input::placeholder {
+  color: #64748B;
 }
+
+/* FILTRY */
 
 .genre-filters {
   display: flex;
@@ -702,13 +809,20 @@ onUnmounted(() => {
 }
 
 .genre-filters button {
+  min-height: 32px;
   padding: 7px 12px;
   background: transparent;
   border: 1px solid #293244;
-  border-radius: 5px;
+  border-radius: 6px;
   color: #94A3B8;
   font-size: 11px;
   cursor: pointer;
+  transition: background .2s;
+}
+
+.genre-filters button:hover {
+  color: #F8FAFC;
+  border-color: #8B5CF6;
 }
 
 .genre-filters button.selected {
@@ -717,8 +831,10 @@ onUnmounted(() => {
   color: #E9D5FF;
 }
 
+/* SEKCJE */
+
 .home-section {
-  margin: 15px 0 35px;
+  margin: 15px 0 38px;
 }
 
 .section-heading {
@@ -729,12 +845,28 @@ onUnmounted(() => {
   margin-bottom: 20px;
 }
 
+.section-label {
+  display: block;
+  margin-bottom: 9px;
+  color: #A78BFA;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+}
+
 .section-heading a {
   color: #C4B5FD;
-  text-decoration: none;
   font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
   white-space: nowrap;
 }
+
+.section-heading a:hover {
+  color: #FFFFFF;
+}
+
+/* SIATKA GIER */
 
 .games-grid,
 .categories-grid {
@@ -743,30 +875,49 @@ onUnmounted(() => {
   gap: 18px;
 }
 
+/* KARTY GIER */
+
 .game-card {
-  overflow: hidden;
   min-width: 0;
+  overflow: hidden;
   background: #151B2B;
   border: 1px solid #293244;
   border-radius: 12px;
-  transition: transform .2s, border-color .2s;
+  transition:
+    transform .2s,
+    border-color .2s,
+    box-shadow .2s;
 }
 
 .game-card:hover {
   transform: translateY(-4px);
   border-color: #8B5CF6;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .2);
 }
 
 .game-image {
   position: relative;
+  overflow: hidden;
   aspect-ratio: 16 / 9;
   background: #24203C;
 }
 
+.game-image-link {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 .game-image img {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transition: transform .35s;
+}
+
+.game-card:hover .game-image img {
+  transform: scale(1.04);
 }
 
 .card-rating {
@@ -781,21 +932,42 @@ onUnmounted(() => {
   right: 10px;
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  background: #0B0F19;
-  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: rgba(11, 15, 25, .85);
+  border: 1px solid #475569;
+  border-radius: 7px;
   color: #FFFFFF;
-  text-decoration: none;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.add-game:hover {
+  background: #8B5CF6;
+  border-color: #8B5CF6;
 }
 
 .game-content {
   padding: 17px;
 }
 
+.game-name {
+  display: block;
+  color: #F8FAFC;
+  text-decoration: none;
+}
+
+.game-name:hover {
+  color: #C4B5FD;
+}
+
 .game-content h3 {
+  min-height: 38px;
   margin: 0 0 8px;
   font-size: 15px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .game-content p {
@@ -805,20 +977,50 @@ onUnmounted(() => {
 }
 
 .game-footer {
-  margin-top: 20px;
-  padding-top: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 12px;
   border-top: 1px solid #293244;
   color: #94A3B8;
   font-size: 10px;
 }
 
+.game-footer span {
+  min-width: 0;
+  line-height: 1.6;
+}
+
+.game-arrow {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  background: #20263A;
+  border: 1px solid #293244;
+  border-radius: 6px;
+  color: #C4B5FD;
+  font-size: 16px;
+}
+
+.game-arrow:hover {
+  background: #8B5CF6;
+  color: #FFFFFF;
+}
+
+/* KATEGORIE */
+
 .category-card {
   display: flex;
   flex-direction: column;
-  justify-content: center;
   align-items: flex-start;
+  justify-content: center;
+  min-width: 0;
   min-height: 130px;
   padding: 20px;
+  background-color: #151B2B;
   background-size: cover;
   background-position: center;
   border: 1px solid #293244;
@@ -826,14 +1028,19 @@ onUnmounted(() => {
   color: #F8FAFC;
   text-align: left;
   cursor: pointer;
+  transition:
+    transform .2s,
+    border-color .2s;
 }
 
 .category-card:hover {
+  transform: translateY(-3px);
   border-color: #8B5CF6;
 }
 
 .category-card strong {
   font-size: 19px;
+  line-height: 1.3;
 }
 
 .category-card span {
@@ -842,11 +1049,15 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
+/* WYROZNIONA GRA */
+
 .featured-banner {
   display: flex;
   align-items: center;
-  min-height: 240px;
-  margin-bottom: 35px;
+  min-height: 260px;
+  margin-bottom: 38px;
+  overflow: hidden;
+  background-color: #151B2B;
   background-size: cover;
   background-position: center;
   border: 1px solid #293244;
@@ -854,6 +1065,8 @@ onUnmounted(() => {
 }
 
 .featured-content {
+  width: 100%;
+  max-width: 480px;
   padding: 30px;
 }
 
@@ -866,21 +1079,32 @@ onUnmounted(() => {
 
 .featured-content h2 {
   margin: 14px 0 8px;
+  color: #F8FAFC;
   font-size: 30px;
+  line-height: 1.25;
 }
 
 .featured-content h3 {
   margin: 0;
-  font-size: 15px;
   color: #CBD5E1;
+  font-size: 15px;
 }
 
 .featured-content p {
   margin: 15px 0 20px;
-  color: #94A3B8;
+  color: #CBD5E1;
   font-size: 13px;
   line-height: 1.7;
 }
+
+.featured-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* SPOLECZNOSC */
 
 .community-grid {
   display: grid;
@@ -890,6 +1114,9 @@ onUnmounted(() => {
 
 .review-card,
 .join-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   padding: 22px;
   background: #151B2B;
   border: 1px solid #293244;
@@ -903,6 +1130,10 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
+.review-header strong {
+  overflow-wrap: anywhere;
+}
+
 .review-header .rating {
   margin-left: auto;
 }
@@ -910,9 +1141,9 @@ onUnmounted(() => {
 .avatar {
   display: grid;
   place-items: center;
+  flex-shrink: 0;
   width: 35px;
   height: 35px;
-  flex-shrink: 0;
   background: #31234F;
   border-radius: 50%;
   color: #C4B5FD;
@@ -933,12 +1164,14 @@ onUnmounted(() => {
 }
 
 .review-footer {
-  margin-top: 25px;
-  padding-top: 13px;
+  margin-top: auto;
+  padding-top: 15px;
   border-top: 1px solid #293244;
-  color: #64748B;
+  color: #94A3B8;
   font-size: 11px;
 }
+
+/* REJESTRACJA */
 
 .join-card {
   background: linear-gradient(
@@ -946,66 +1179,117 @@ onUnmounted(() => {
     #31234F,
     #151B2B
   );
+  border-color: #44306B;
 }
 
 .join-icon {
-  display: inline-block;
-  padding: 10px;
+  display: grid;
+  place-items: center;
+  width: 45px;
+  height: 45px;
+  margin-bottom: 17px;
   background: #44306B;
-  border-radius: 8px;
+  border-radius: 10px;
   color: #C4B5FD;
-  font-size: 20px;
 }
 
 .join-card h2 {
+  margin: 0 0 12px;
+  color: #F8FAFC;
   font-size: 22px;
   line-height: 1.3;
 }
 
 .join-card .primary-button {
   width: 100%;
-  margin-top: 10px;
+  margin-top: auto;
 }
+
+/* PODSUMOWANIE */
 
 .portal-stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 20px;
   padding: 25px 0;
   border-top: 1px solid #293244;
 }
 
-.portal-stats div {
+.stat-item {
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 14px;
 }
 
-.portal-stats strong {
+.stat-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  background: #201B36;
+  border: 1px solid #44306B;
+  border-radius: 10px;
+  color: #C4B5FD;
   font-size: 22px;
 }
 
-.portal-stats span,
-.demo-notice {
+.stat-item div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.stat-item strong {
+  color: #F8FAFC;
+  font-size: 19px;
+}
+
+.stat-item div span {
   color: #94A3B8;
   font-size: 12px;
 }
 
 .demo-notice {
+  margin: 15px 0 0;
+  color: #64748B;
   text-align: center;
-  margin-top: 25px;
+  font-size: 11px !important;
 }
 
+/* BRAK WYNIKOW */
+
 .empty-state {
-  padding: 35px;
+  padding: 35px 20px;
   background: #151B2B;
   border: 1px solid #293244;
   border-radius: 12px;
-  text-align: center;
   color: #94A3B8;
+  text-align: center;
 }
 
+.empty-icon {
+  display: block;
+  margin-bottom: 15px;
+  color: #A78BFA;
+  font-size: 42px;
+}
+
+.empty-state h3 {
+  margin: 0 0 10px;
+  color: #F8FAFC;
+  font-size: 18px;
+}
+
+.empty-state p {
+  margin-bottom: 20px;
+  font-size: 13px;
+}
+
+/* TABLETY */
+
 @media (max-width: 1000px) {
+
   .discovery-section {
     grid-template-columns: 1fr;
     gap: 20px;
@@ -1024,38 +1308,66 @@ onUnmounted(() => {
     grid-column: 1 / -1;
   }
 
-  .portal-stats div {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
+  .stat-item {
+    gap: 10px;
   }
+
 }
 
+/* TELEFONY */
+
 @media (max-width: 600px) {
+
   .home-page {
-    padding: 12px 15px 35px;
+    padding: 12px 14px 30px;
   }
 
-  .hero {
-    min-height: 450px;
-    background-position: 65% center;
-  }
-
-  .hero-content {
-    padding: 25px;
-  }
-
-  .hero h1 {
-    font-size: 33px;
+  .discovery-section {
+    gap: 16px;
+    padding: 27px 0;
   }
 
   .search-form {
     flex-direction: column;
+    gap: 10px;
+  }
+
+  .search-input {
+    min-height: 48px;
+  }
+
+  .search-input input {
+    font-size: 16px;
+  }
+
+  .search-form .primary-button {
+    width: 100%;
+    min-height: 46px;
+  }
+
+  .genre-filters {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 7px;
+    scrollbar-width: thin;
+    scrollbar-color: #293244 transparent;
+  }
+
+  .genre-filters button {
+    flex-shrink: 0;
+    min-height: 34px;
+    white-space: nowrap;
+  }
+
+  .home-section {
+    margin: 10px 0 30px;
   }
 
   .section-heading {
-    align-items: flex-start;
     flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 16px;
   }
 
   .section-heading h2,
@@ -1063,9 +1375,17 @@ onUnmounted(() => {
     font-size: 21px;
   }
 
+  .section-label {
+    font-size: 9px;
+  }
+
   .games-grid,
   .categories-grid {
-    gap: 12px;
+    gap: 11px;
+  }
+
+  .game-card {
+    border-radius: 10px;
   }
 
   .game-content {
@@ -1073,46 +1393,146 @@ onUnmounted(() => {
   }
 
   .game-content h3 {
+    min-height: 34px;
     font-size: 13px;
   }
 
+  .game-content p {
+    font-size: 10px;
+  }
+
+  .card-rating {
+    top: 7px;
+    left: 7px;
+    padding: 4px 6px;
+    font-size: 10px;
+  }
+
+  .add-game {
+    top: 7px;
+    right: 7px;
+    width: 29px;
+    height: 29px;
+  }
+
+  .game-footer {
+    gap: 5px;
+    margin-top: 12px;
+    padding-top: 10px;
+    font-size: 9px;
+  }
+
+  .game-arrow {
+    width: 27px;
+    height: 27px;
+  }
+
   .category-card {
-    min-height: 100px;
+    min-height: 110px;
     padding: 14px;
+    border-radius: 10px;
   }
 
   .category-card strong {
     font-size: 16px;
   }
 
+  .category-card span {
+    font-size: 11px;
+  }
+
+  .featured-banner {
+    min-height: 280px;
+    margin-bottom: 30px;
+    background-position: 65% center;
+  }
+
   .featured-content {
-    padding: 23px;
+    padding: 22px;
   }
 
   .featured-content h2 {
     font-size: 24px;
   }
 
-  .community-grid {
-    grid-template-columns: 1fr;
+  .featured-label {
+    font-size: 9px;
   }
 
-  .portal-stats strong {
+  .community-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .review-card,
+  .join-card {
+    padding: 19px;
+  }
+
+  .portal-stats {
+    grid-template-columns: 1fr;
+    gap: 18px;
+    padding: 22px 0;
+  }
+
+  .stat-item strong {
     font-size: 16px;
   }
 
-  .portal-stats span {
-    font-size: 11px;
+  .stat-item div span {
+    font-size: 12px;
   }
+
 }
 
+/* MALE TELEFONY */
+
+@media (max-width: 360px) {
+
+  .home-page {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .games-grid,
+  .categories-grid {
+    gap: 8px;
+  }
+
+  .game-content {
+    padding: 10px;
+  }
+
+  .game-content h3 {
+    font-size: 12px;
+  }
+
+  .game-footer {
+    flex-wrap: wrap;
+  }
+
+  .category-card strong {
+    font-size: 14px;
+  }
+
+}
+
+/* OGRANICZENIE ANIMACJI */
+
 @media (prefers-reduced-motion: reduce) {
-  .game-card {
+
+  .game-card,
+  .game-image img,
+  .category-card,
+  .primary-button {
     transition: none;
   }
 
-  .game-card:hover {
+  .game-card:hover,
+  .category-card:hover,
+  .game-card:hover .game-image img {
     transform: none;
   }
+
 }
 </style>
