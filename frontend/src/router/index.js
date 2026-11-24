@@ -9,14 +9,16 @@ import { useAuthStore } from '../stores/authStore'
 import HomeView from '../views/HomeView.vue'
 import GamesView from '../views/GamesView.vue'
 import GameDetailsView from '../views/GameDetailsView.vue'
+import LibraryView from '../views/LibraryView.vue'
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import ProfileView from '../views/ProfileView.vue'
-import LibraryView from '../views/LibraryView.vue'
 
 import AdminDashboardView from '../views/admin/AdminDashboardView.vue'
 import AdminGamesView from '../views/admin/AdminGamesView.vue'
 import AdminReviewsView from '../views/admin/AdminReviewsView.vue'
+
+/* TRASY APLIKACJI */
 
 const routes = [
   {
@@ -47,6 +49,19 @@ const routes = [
     }
   },
 
+  /* BIBLIOTEKA DEMONSTRACYJNA */
+
+  {
+    path: '/library',
+    name: 'library',
+    component: LibraryView,
+    meta: {
+      title: 'Moja biblioteka'
+    }
+  },
+
+  /* LOGOWANIE */
+
   {
     path: '/login',
     name: 'login',
@@ -56,6 +71,8 @@ const routes = [
       guestOnly: true
     }
   },
+
+  /* REJESTRACJA */
 
   {
     path: '/register',
@@ -67,6 +84,8 @@ const routes = [
     }
   },
 
+  /* PROFIL UZYTKOWNIKA */
+
   {
     path: '/profile',
     name: 'profile',
@@ -77,19 +96,11 @@ const routes = [
     }
   },
 
-  {
-    path: '/library',
-    name: 'library',
-    component: LibraryView,
-    meta: {
-      title: 'Moja biblioteka',
-      requiresAuth: true
-    }
-  },
+  /* PANEL ADMINISTRATORA */
 
   {
     path: '/admin',
-    name: 'admin',
+    name: 'admin-dashboard',
     component: AdminDashboardView,
     meta: {
       title: 'Panel administratora',
@@ -114,11 +125,13 @@ const routes = [
     name: 'admin-reviews',
     component: AdminReviewsView,
     meta: {
-      title: 'Moderacja recenzji',
+      title: 'Zarządzanie recenzjami',
       requiresAuth: true,
       requiresAdmin: true
     }
   },
+
+  /* NIEPRAWIDLOWY ADRES */
 
   {
     path: '/:pathMatch(.*)*',
@@ -126,8 +139,13 @@ const routes = [
   }
 ]
 
+/* KONFIGURACJA ROUTERA */
+
 const router = createRouter({
-  history: createWebHashHistory(),
+  history: createWebHashHistory(
+    import.meta.env.BASE_URL
+  ),
+
   routes,
 
   scrollBehavior(to, from, savedPosition) {
@@ -135,15 +153,24 @@ const router = createRouter({
       return savedPosition
     }
 
+    if (to.path === from.path) {
+      return false
+    }
+
     return {
       top: 0,
-      left: 0
+      left: 0,
+      behavior: 'auto'
     }
   }
 })
 
+/* KONTROLA DOSTEPU */
+
 router.beforeEach((to) => {
   const authStore = useAuthStore()
+
+  /* STRONY WYMAGAJACE LOGOWANIA */
 
   if (
     to.meta.requiresAuth &&
@@ -157,6 +184,8 @@ router.beforeEach((to) => {
     }
   }
 
+  /* PANEL ADMINISTRATORA */
+
   if (
     to.meta.requiresAdmin &&
     !authStore.isAdmin
@@ -165,6 +194,8 @@ router.beforeEach((to) => {
       name: 'home'
     }
   }
+
+  /* STRONY DLA NIEZALOGOWANYCH */
 
   if (
     to.meta.guestOnly &&
@@ -178,10 +209,12 @@ router.beforeEach((to) => {
   return true
 })
 
+/* TYTUL STRONY */
+
 router.afterEach((to) => {
   document.title = to.meta.title
     ? `${to.meta.title} | Gamevers`
-    : 'Gamevers'
+    : 'Gamevers — Twój świat gier'
 })
 
 export default router
