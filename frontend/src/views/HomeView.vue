@@ -8,14 +8,19 @@ import PopularGameCard from '../components/games/PopularGameCard.vue'
 import GenreCard from '../components/games/GenreCard.vue'
 
 import {
+  games,
+  genres,
+  platforms,
   categories,
   filterGames,
   getPopularGames,
-  getGameById,
-  getCatalogStats
+  getGameById
 } from '../data/games'
 
+import { useLibraryStore } from '../stores/libraryStore'
+
 const router = useRouter()
+const libraryStore = useLibraryStore()
 
 /* WYSZUKIWANIE */
 
@@ -24,38 +29,69 @@ const activeGenre = ref('Wszystkie gry')
 
 const quickGenres = [
   'Wszystkie gry',
-  'RPG',
-  'Akcja',
-  'Przygodowe',
-  'Strategiczne',
-  'Niezależne',
-  'Wyścigowe'
+  ...[
+    'RPG',
+    'Akcja',
+    'Przygodowe',
+    'Strategiczne',
+    'Niezależne',
+    'Wyścigowe'
+  ].filter(genre => genres.includes(genre))
 ]
 
 /* DANE KATALOGU */
 
-const catalogStats = getCatalogStats()
+const popularGames = computed(() =>
+  getPopularGames(4)
+)
 
-const popularGames = computed(() => {
-  return getPopularGames(4)
-})
+const hasActiveFilters = computed(() =>
+  search.value.trim() !== '' ||
+  activeGenre.value !== 'Wszystkie gry'
+)
 
 const filteredGames = computed(() => {
-  if (
-    !search.value.trim() &&
-    activeGenre.value === 'Wszystkie gry'
-  ) {
+  if (!hasActiveFilters.value) {
     return popularGames.value
   }
 
   return filterGames({
     search: search.value,
-    genre: activeGenre.value,
+    genre:
+      activeGenre.value === 'Wszystkie gry'
+        ? ''
+        : activeGenre.value,
     sort: 'popular'
   }).slice(0, 4)
 })
 
 const featuredGame = getGameById(6)
+
+/* STATYSTYKI */
+
+const portalStats = computed(() => [
+  {
+    icon: '◈',
+    value: games.length,
+    label: 'Gier w katalogu'
+  },
+  {
+    icon: '◎',
+    value: genres.length,
+    label: 'Gatunków gier'
+  },
+  {
+    icon: '▥',
+    value: platforms.length,
+    label: 'Platform'
+  },
+  {
+    icon: '☆',
+    value: libraryStore.totalGames,
+    label: 'W Twojej bibliotece',
+    link: '/library'
+  }
+])
 
 /* PRZYKLADOWE RECENZJE */
 
@@ -80,7 +116,7 @@ const reviews = [
   }
 ]
 
-/* WYSZUKIWANIE W KATALOGU */
+/* PRZEJSCIE DO KATALOGU */
 
 function browseGames() {
   const query = {}
@@ -99,35 +135,11 @@ function browseGames() {
   })
 }
 
-/* WYBOR KATEGORII */
-
-function selectCategory(category) {
-  const genre =
-    typeof category === 'string'
-      ? category
-      : category?.name
-
-  if (!genre) {
-    return
-  }
-
-  router.push({
-    path: '/games',
-    query: { genre }
-  })
-}
-
-/* RESETOWANIE FILTROW */
+/* RESET FILTROW */
 
 function resetFilters() {
   search.value = ''
   activeGenre.value = 'Wszystkie gry'
-}
-
-/* BIBLIOTEKA */
-
-function handleAddToLibrary() {
-  router.push('/library')
 }
 
 /* BANER POLECANEJ GRY */
@@ -158,9 +170,7 @@ const featuredBackground = computed(() => {
 
       <!-- GLOWNY BANER -->
 
-      <HomeHero
-        @add-to-library="handleAddToLibrary"
-      />
+      <HomeHero />
 
       <!-- WYSZUKIWARKA -->
 
@@ -206,6 +216,16 @@ const featuredBackground = computed(() => {
                 placeholder="Wpisz tytuł lub gatunek..."
               />
 
+              <button
+                v-if="search"
+                type="button"
+                class="clear-search"
+                aria-label="Wyczyść wyszukiwanie"
+                @click="search = ''"
+              >
+                ×
+              </button>
+
             </div>
 
             <button
@@ -216,6 +236,8 @@ const featuredBackground = computed(() => {
             </button>
 
           </form>
+
+          <!-- SZYBKIE FILTRY -->
 
           <div class="genre-filters">
 
@@ -252,8 +274,7 @@ const featuredBackground = computed(() => {
 
             <h2>
               {{
-                search.trim() ||
-                activeGenre !== 'Wszystkie gry'
+                hasActiveFilters
                   ? 'Wyniki wyszukiwania'
                   : 'Popularne teraz'
               }}
@@ -261,8 +282,7 @@ const featuredBackground = computed(() => {
 
             <p>
               {{
-                search.trim() ||
-                activeGenre !== 'Wszystkie gry'
+                hasActiveFilters
                   ? 'Gry pasujące do Twoich preferencji.'
                   : 'Odkryj polecane tytuły z katalogu.'
               }}
@@ -289,10 +309,11 @@ const featuredBackground = computed(() => {
             v-for="game in filteredGames"
             :key="game.id"
             :game="game"
-            @add-to-library="handleAddToLibrary"
           />
 
         </div>
+
+        <!-- BRAK WYNIKOW -->
 
         <div
           v-else
@@ -361,8 +382,7 @@ const featuredBackground = computed(() => {
           <GenreCard
             v-for="category in categories"
             :key="category.name"
-            :category="category"
-            @select="selectCategory(category)"
+            :genre="category"
           />
 
         </div>
@@ -387,7 +407,9 @@ const featuredBackground = computed(() => {
             Mała gra. Ogromny świat.
           </h2>
 
-          <h3>{{ featuredGame.title }}</h3>
+          <h3>
+            {{ featuredGame.title }}
+          </h3>
 
           <p>
             {{ featuredGame.description }}
@@ -467,7 +489,9 @@ const featuredBackground = computed(() => {
               {{ review.game }}
             </RouterLink>
 
-            <p>{{ review.content }}</p>
+            <p>
+              {{ review.content }}
+            </p>
 
             <div class="review-footer">
               Przykładowa recenzja
@@ -475,7 +499,7 @@ const featuredBackground = computed(() => {
 
           </article>
 
-          <!-- ZACHECENIE DO REJESTRACJI -->
+          <!-- KARTA BIBLIOTEKI -->
 
           <article class="join-card">
 
@@ -510,11 +534,30 @@ const featuredBackground = computed(() => {
               Stwórz własną bibliotekę gier.
             </p>
 
+            <div class="library-preview">
+
+              <strong>
+                {{ libraryStore.totalGames }}
+              </strong>
+
+              <span>
+                Zapisane gry
+              </span>
+
+            </div>
+
             <RouterLink
-              to="/register"
+              to="/library"
               class="primary-button"
             >
-              Załóż bezpłatne konto →
+              Moja biblioteka →
+            </RouterLink>
+
+            <RouterLink
+              to="/register"
+              class="register-link"
+            >
+              Załóż bezpłatne konto
             </RouterLink>
 
           </article>
@@ -530,41 +573,37 @@ const featuredBackground = computed(() => {
         aria-label="Statystyki katalogu"
       >
 
-        <div class="stat-item">
+        <div
+          v-for="stat in portalStats"
+          :key="stat.label"
+          class="stat-item"
+        >
 
-          <span class="stat-icon">◈</span>
+          <span
+            class="stat-icon"
+            aria-hidden="true"
+          >
+            {{ stat.icon }}
+          </span>
 
-          <div>
+          <div class="stat-content">
+
             <strong>
-              {{ catalogStats.totalGames }}
+              {{ stat.value }}
             </strong>
-            <span>Gier w katalogu</span>
-          </div>
 
-        </div>
+            <RouterLink
+              v-if="stat.link"
+              :to="stat.link"
+              class="stat-link"
+            >
+              {{ stat.label }} →
+            </RouterLink>
 
-        <div class="stat-item">
+            <span v-else>
+              {{ stat.label }}
+            </span>
 
-          <span class="stat-icon">◎</span>
-
-          <div>
-            <strong>
-              {{ catalogStats.totalGenres }}
-            </strong>
-            <span>Gatunków gier</span>
-          </div>
-
-        </div>
-
-        <div class="stat-item">
-
-          <span class="stat-icon">▥</span>
-
-          <div>
-            <strong>
-              {{ catalogStats.totalPlatforms }}
-            </strong>
-            <span>Platform</span>
           </div>
 
         </div>
@@ -574,6 +613,8 @@ const featuredBackground = computed(() => {
       <p class="demo-notice">
         Gamevers — wersja demonstracyjna.
         Oceny i recenzje są przykładowe.
+        Biblioteka jest zapisywana lokalnie
+        w przeglądarce.
       </p>
 
     </div>
@@ -715,6 +756,24 @@ const featuredBackground = computed(() => {
 
 .search-input input::placeholder {
   color: #64748B;
+}
+
+.search-input input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.clear-search {
+  flex-shrink: 0;
+  padding: 4px 6px;
+  background: transparent;
+  border: none;
+  color: #94A3B8;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.clear-search:hover {
+  color: #FFFFFF;
 }
 
 /* SZYBKIE FILTRY */
@@ -933,7 +992,7 @@ const featuredBackground = computed(() => {
   font-size: 11px;
 }
 
-/* KARTA REJESTRACJI */
+/* KARTA BIBLIOTEKI */
 
 .join-card {
   background: linear-gradient(
@@ -962,9 +1021,44 @@ const featuredBackground = computed(() => {
   line-height: 1.3;
 }
 
+.library-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 12px 15px;
+  background: rgba(11,15,25,.4);
+  border: 1px solid #44306B;
+  border-radius: 8px;
+}
+
+.library-preview strong {
+  color: #C4B5FD;
+  font-size: 25px;
+  font-weight: 800;
+}
+
+.library-preview span {
+  color: #CBD5E1;
+  font-size: 12px;
+}
+
 .join-card .primary-button {
   width: 100%;
   margin-top: auto;
+}
+
+.register-link {
+  display: block;
+  margin-top: 14px;
+  color: #C4B5FD;
+  font-size: 11px;
+  text-align: center;
+  text-decoration: none;
+}
+
+.register-link:hover {
+  color: #FFFFFF;
 }
 
 /* STATYSTYKI */
@@ -972,7 +1066,7 @@ const featuredBackground = computed(() => {
 .portal-stats {
   display: grid;
   grid-template-columns:
-    repeat(3, minmax(0, 1fr));
+    repeat(4, minmax(0, 1fr));
   gap: 20px;
   padding: 25px 0;
   border-top: 1px solid #293244;
@@ -982,6 +1076,7 @@ const featuredBackground = computed(() => {
   display: flex;
   align-items: center;
   gap: 14px;
+  min-width: 0;
 }
 
 .stat-icon {
@@ -997,27 +1092,39 @@ const featuredBackground = computed(() => {
   font-size: 22px;
 }
 
-.stat-item div {
+.stat-content {
   display: flex;
   flex-direction: column;
   gap: 5px;
+  min-width: 0;
 }
 
-.stat-item strong {
+.stat-content strong {
   color: #F8FAFC;
   font-size: 22px;
   font-weight: 800;
 }
 
-.stat-item div span {
+.stat-content span {
   color: #94A3B8;
   font-size: 12px;
+}
+
+.stat-link {
+  color: #C4B5FD;
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.stat-link:hover {
+  color: #FFFFFF;
 }
 
 .demo-notice {
   margin: 15px 0 0;
   color: #94A3B8;
   font-size: 11px;
+  line-height: 1.7;
   text-align: center;
 }
 
@@ -1083,7 +1190,9 @@ button:focus-visible {
   }
 
   .portal-stats {
-    gap: 10px;
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+    gap: 20px;
   }
 
 }
@@ -1186,13 +1295,29 @@ button:focus-visible {
   }
 
   .portal-stats {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 18px;
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+    gap: 18px 10px;
     padding: 22px 0;
   }
 
-  .stat-item strong {
+  .stat-item {
+    gap: 9px;
+  }
+
+  .stat-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+  }
+
+  .stat-content strong {
     font-size: 19px;
+  }
+
+  .stat-content span,
+  .stat-link {
+    font-size: 10px;
   }
 
 }
@@ -1209,6 +1334,11 @@ button:focus-visible {
   .games-grid,
   .categories-grid {
     gap: 8px;
+  }
+
+  .stat-icon {
+    width: 32px;
+    height: 32px;
   }
 
 }
