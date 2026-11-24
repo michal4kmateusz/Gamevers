@@ -1,663 +1,1771 @@
 
 <script setup>
-import { computed, ref, watch } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { ref, computed, watch } from 'vue'
+import {
+  RouterLink,
+  useRoute,
+  useRouter
+} from 'vue-router'
+
+import PopularGameCard from '../components/games/PopularGameCard.vue'
+
+import {
+  getGameById,
+  getRelatedGames
+} from '../data/games'
+
 import { useAuthStore } from '../stores/authStore'
-import * as gamesService from '../services/gamesService'
-import * as libraryService from '../services/libraryService'
-import GameReviews from '../components/reviews/GameReviews.vue'
 
 const route = useRoute()
+const router = useRouter()
 const authStore = useAuthStore()
 
-const game = ref(null)
-const loading = ref(true)
-const error = ref('')
+/* DANE GRY */
 
-const selectedStatus = ref('wishlist')
-const adding = ref(false)
-const successMessage = ref('')
-const actionError = ref('')
+const game = computed(() => {
+  return getGameById(route.params.id)
+})
 
-const statuses = [
-  { value: 'wishlist', label: 'Chcę zagrać' },
-  { value: 'playing', label: 'Gram' },
-  { value: 'completed', label: 'Ukończone' },
-  { value: 'dropped', label: 'Porzucone' }
+const relatedGames = computed(() => {
+  if (!game.value) {
+    return []
+  }
+
+  return getRelatedGames(game.value.id, 4)
+})
+
+/* STAN INTERFEJSU */
+
+const activeTab = ref('overview')
+const coverFailed = ref(false)
+const bannerFailed = ref(false)
+const copied = ref(false)
+const shareError = ref(false)
+
+/* ZAKLADKI */
+
+const tabs = [
+  {
+    id: 'overview',
+    label: 'Informacje'
+  },
+  {
+    id: 'reviews',
+    label: 'Recenzje'
+  },
+  {
+    id: 'related',
+    label: 'Podobne gry'
+  }
 ]
 
-const gameId = computed(() => route.params.id)
+/* PRZYKLADOWE RECENZJE */
 
-const genres = computed(() => {
-  const value = game.value?.genres
+const demoReviews = [
+  {
+    id: 1,
+    gameId: 1,
+    author: 'NeonRaven',
+    rating: 9.0,
+    content: 'Night City wciąga od pierwszej minuty. Świetnie napisane postacie i wyjątkowy klimat.'
+  },
+  {
+    id: 2,
+    gameId: 6,
+    author: 'Luna.exe',
+    rating: 9.5,
+    content: 'Każdy zakątek skrywa coś nowego. Muzyka, klimat i wyjątkowy świat tworzą niesamowitą przygodę.'
+  }
+]
 
-  if (!Array.isArray(value)) return []
-
-  return value
-    .map((genre) =>
-      typeof genre === 'string'
-        ? genre
-        : genre?.name
-    )
-    .filter(Boolean)
-})
-
-const platforms = computed(() => {
-  const value = game.value?.platforms
-
-  if (!Array.isArray(value)) return []
-
-  return value
-    .map((platform) =>
-      typeof platform === 'string'
-        ? platform
-        : platform?.name
-    )
-    .filter(Boolean)
-})
-
-const rating = computed(() => {
-  const value = game.value?.average_rating
-
-  if (value === null || value === undefined) {
-    return 'Brak ocen'
+const gameReviews = computed(() => {
+  if (!game.value) {
+    return []
   }
 
-  const number = Number(value)
-
-  return Number.isFinite(number)
-    ? `${number.toFixed(1)}/10`
-    : 'Brak ocen'
+  return demoReviews.filter(
+    review => review.gameId === game.value.id
+  )
 })
 
-async function loadGame() {
-  loading.value = true
-  error.value = ''
-  game.value = null
-  successMessage.value = ''
-  actionError.value = ''
+/* FORMATOWANIE DATY */
 
-  try {
-    const response = await gamesService.getGame(
-      gameId.value
-    )
+function formatDate(date) {
+  if (!date) {
+    return 'Brak informacji'
+  }
 
-    game.value = response.data?.data ?? response.data
+  const parsedDate = new Date(
+    `${date}T00:00:00`
+  )
 
-    if (!game.value?.id) {
-      throw new Error('Brak danych gry')
+  if (Number.isNaN(parsedDate.getTime())) {
+    return 'Brak informacji'
+  }
+
+  return parsedDate.toLocaleDateString(
+    'pl-PL',
+    {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
     }
-  } catch (err) {
-    error.value =
-      'Nie udało się pobrać szczegółów gry.'
-  } finally {
-    loading.value = false
-  }
+  )
 }
 
-async function addToLibrary() {
-  if (
-    !authStore.isAuthenticated ||
-    !game.value?.id ||
-    adding.value
-  ) {
+/* FORMATOWANIE OCENY */
+
+function formatRating(rating) {
+  const value = Number(rating)
+
+  return Number.isFinite(value)
+    ? value.toFixed(1)
+    : '—'
+}
+
+/* BANER */
+
+const heroStyle = computed(() => {
+  if (!game.value || bannerFailed.value) {
+    return {}
+  }
+
+  return {
+    backgroundImage: `
+      linear-gradient(
+        90deg,
+        rgba(11,15,25,.96) 0%,
+        rgba(11,15,25,.75) 45%,
+        rgba(11,15,25,.15) 100%
+      ),
+      linear-gradient(
+        0deg,
+        rgba(11,15,25,.95),
+        transparent 80%
+      ),
+      url('${game.value.banner_url}')
+    `
+  }
+})
+
+/* INFORMACJE TECHNICZNE */
+
+const gameInformation = computed(() => {
+  if (!game.value) {
+    return []
+  }
+
+  return [
+    {
+      label: 'Data premiery',
+      value: formatDate(game.value.release_date),
+      icon: '◷'
+    },
+    {
+      label: 'Producent',
+      value: game.value.developer,
+      icon: '◇'
+    },
+    {
+      label: 'Wydawca',
+      value: game.value.publisher,
+      icon: '▤'
+    },
+    {
+      label: 'Gatunki',
+      value: game.value.genres.join(' · '),
+      icon: '◈'
+    },
+    {
+      label: 'Platformy',
+      value: game.value.platforms.join(' · '),
+      icon: '▣'
+    }
+  ]
+})
+
+/* BIBLIOTEKA */
+
+function addToLibrary(selectedGame = game.value) {
+  if (!selectedGame) {
     return
   }
 
-  adding.value = true
-  successMessage.value = ''
-  actionError.value = ''
+  if (!authStore.isAuthenticated) {
+    router.push({
+      path: '/login',
+      query: {
+        redirect: `/games/${selectedGame.id}`
+      }
+    })
+
+    return
+  }
+
+  router.push('/library')
+}
+
+/* UDOSTEPNIANIE */
+
+async function shareGame() {
+  copied.value = false
+  shareError.value = false
 
   try {
-    await libraryService.addLibraryGame(
-      game.value.id,
-      selectedStatus.value
+    await navigator.clipboard.writeText(
+      window.location.href
     )
 
-    successMessage.value =
-      'Gra została dodana do Twojej biblioteki.'
-  } catch (err) {
-    if (
-      err.response?.status === 409 ||
-      err.response?.status === 422
-    ) {
-      actionError.value =
-        'Nie udało się dodać gry. Możliwe, że jest już w bibliotece.'
-    } else if (err.response?.status === 401) {
-      actionError.value =
-        'Sesja wygasła. Zaloguj się ponownie.'
-    } else {
-      actionError.value =
-        'Nie udało się dodać gry do biblioteki.'
-    }
-  } finally {
-    adding.value = false
+    copied.value = true
+  } catch {
+    shareError.value = true
   }
 }
 
-watch(gameId, loadGame, { immediate: true })
+/* ZMIANA ZAKLADKI */
+
+function selectTab(tabId) {
+  activeTab.value = tabId
+}
+
+/* ZMIANA GRY */
+
+watch(
+  () => route.params.id,
+  () => {
+    activeTab.value = 'overview'
+    coverFailed.value = false
+    bannerFailed.value = false
+    copied.value = false
+    shareError.value = false
+
+    window.scrollTo({
+      top: 0,
+      behavior: 'auto'
+    })
+  }
+)
 </script>
 
 <template>
   <main class="details-page">
+
     <div class="details-container">
 
-      <!-- Ładowanie danych -->
-      <div v-if="loading" class="state-message">
-        Ładowanie szczegółów gry...
-      </div>
+      <!-- GRA ISTNIEJE -->
 
-      <!-- Błąd pobierania -->
-      <div
-        v-else-if="error"
-        class="state-message error"
-        role="alert"
-      >
-        <p>{{ error }}</p>
+      <template v-if="game">
 
-        <button
-          type="button"
-          @click="loadGame"
+        <!-- NAWIGACJA -->
+
+        <nav
+          class="breadcrumbs"
+          aria-label="Ścieżka nawigacji"
         >
-          Spróbuj ponownie
-        </button>
-      </div>
 
-      <!-- Szczegóły gry -->
-      <template v-else-if="game">
+          <RouterLink to="/">
+            Strona główna
+          </RouterLink>
 
-        <RouterLink to="/games" class="back-link">
-          ← Wróć do katalogu
-        </RouterLink>
+          <span>/</span>
 
-        <div class="game-layout">
+          <RouterLink to="/games">
+            Gry
+          </RouterLink>
 
-          <!-- Główna część strony -->
-          <div class="game-main">
+          <span>/</span>
 
-            <!-- Okładka -->
-            <div class="cover-container">
-              <img
-                v-if="game.cover_url"
-                :src="game.cover_url"
-                :alt="`Okładka gry ${game.title}`"
-                class="game-cover"
-              />
+          <span aria-current="page">
+            {{ game.title }}
+          </span>
 
-              <div
-                v-else
-                class="cover-placeholder"
+        </nav>
+
+        <!-- BANER GRY -->
+
+        <section
+          class="game-hero"
+          :style="heroStyle"
+        >
+
+          <img
+            class="banner-check"
+            :src="game.banner_url"
+            alt=""
+            aria-hidden="true"
+            @error="bannerFailed = true"
+          />
+
+          <div class="hero-content">
+
+            <span class="hero-label">
+              GAMEVERS / KATALOG GIER
+            </span>
+
+            <div class="genre-tags">
+
+              <RouterLink
+                v-for="genre in game.genres"
+                :key="genre"
+                :to="{
+                  path: '/games',
+                  query: { genre }
+                }"
               >
-                🎮
-              </div>
+                {{ genre }}
+              </RouterLink>
+
             </div>
 
-            <!-- Informacje o grze -->
-            <div class="game-information">
-              <span class="eyebrow">
-                SZCZEGÓŁY GRY
-              </span>
+            <h1>{{ game.title }}</h1>
 
-              <h1>{{ game.title }}</h1>
-
-              <div
-                v-if="genres.length"
-                class="tags"
-              >
-                <span
-                  v-for="genre in genres"
-                  :key="genre"
-                  class="tag"
-                >
-                  {{ genre }}
-                </span>
-              </div>
-
-              <p class="description">
-                {{
-                  game.description ||
-                  'Opis tej gry nie jest jeszcze dostępny.'
-                }}
-              </p>
-
-              <!-- Metadane -->
-              <div class="metadata">
-
-                <div class="metadata-row">
-                  <span>Ocena społeczności</span>
-                  <strong>{{ rating }}</strong>
-                </div>
-
-                <div class="metadata-row">
-                  <span>Data premiery</span>
-                  <strong>
-                    {{
-                      game.release_date ||
-                      'Brak danych'
-                    }}
-                  </strong>
-                </div>
-
-                <div class="metadata-row">
-                  <span>Producent</span>
-                  <strong>
-                    {{
-                      game.developer ||
-                      'Brak danych'
-                    }}
-                  </strong>
-                </div>
-
-                <div class="metadata-row">
-                  <span>Wydawca</span>
-                  <strong>
-                    {{
-                      game.publisher ||
-                      'Brak danych'
-                    }}
-                  </strong>
-                </div>
-
-                <div class="metadata-row">
-                  <span>Platformy</span>
-                  <strong>
-                    {{
-                      platforms.length
-                        ? platforms.join(', ')
-                        : 'Brak danych'
-                    }}
-                  </strong>
-                </div>
-
-              </div>
-            </div>
-          </div>
-
-          <!-- Panel biblioteki -->
-          <aside class="library-panel">
-            <h2>Twoja biblioteka</h2>
-
-            <p>
-              Zapisz grę i śledź swój postęp.
+            <p class="hero-meta">
+              {{ game.developer }}
+              ·
+              {{ game.release_date.slice(0, 4) }}
             </p>
 
-            <template v-if="authStore.isAuthenticated">
+            <div class="hero-rating">
 
-              <label for="game-status">
-                Wybierz status
-              </label>
+              <div class="rating-value">
 
-              <select
-                id="game-status"
-                v-model="selectedStatus"
-                :disabled="adding"
-              >
-                <option
-                  v-for="status in statuses"
-                  :key="status.value"
-                  :value="status.value"
-                >
-                  {{ status.label }}
-                </option>
-              </select>
+                <span aria-hidden="true">★</span>
+
+                {{ formatRating(game.rating) }}
+
+                <small>/ 10</small>
+
+              </div>
+
+              <div class="rating-description">
+
+                <strong>Ocena gry</strong>
+
+                <span>
+                  Ocena demonstracyjna
+                </span>
+
+              </div>
+
+            </div>
+
+            <div class="hero-actions">
 
               <button
                 type="button"
                 class="primary-button"
-                :disabled="adding"
-                @click="addToLibrary"
+                @click="addToLibrary(game)"
               >
-                {{
-                  adding
-                    ? 'Dodawanie...'
-                    : 'Dodaj do biblioteki'
-                }}
+
+                <svg
+                  width="19"
+                  height="19"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M6 3h12v18l-6-4-6 4z"/>
+                  <path d="M9 9h6m-3-3v6"/>
+                </svg>
+
+                Dodaj do biblioteki
+
               </button>
 
-              <p
-                v-if="successMessage"
-                class="feedback success"
-                role="status"
+              <button
+                type="button"
+                class="secondary-button"
+                @click="shareGame"
               >
-                {{ successMessage }}
+
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  aria-hidden="true"
+                >
+                  <circle cx="18" cy="5" r="3"/>
+                  <circle cx="6" cy="12" r="3"/>
+                  <circle cx="18" cy="19" r="3"/>
+                  <path d="m9 10 6-3m-6 7 6 3"/>
+                </svg>
+
+                {{ copied ? 'Skopiowano link' : 'Udostępnij' }}
+
+              </button>
+
+            </div>
+
+            <p
+              v-if="copied"
+              class="share-message"
+              role="status"
+            >
+              Link do gry został skopiowany.
+            </p>
+
+            <p
+              v-if="shareError"
+              class="share-message error"
+              role="status"
+            >
+              Nie udało się skopiować linku.
+              Skopiuj adres z paska przeglądarki.
+            </p>
+
+            <p class="library-notice">
+              Zapisywanie gier zostanie uruchomione
+              w kolejnym etapie projektu.
+            </p>
+
+          </div>
+
+        </section>
+
+        <!-- ZAKLADKI -->
+
+        <nav
+          class="details-tabs"
+          aria-label="Sekcje szczegółów gry"
+        >
+
+          <button
+            v-for="tab in tabs"
+            :key="tab.id"
+            type="button"
+            :class="{
+              active: activeTab === tab.id
+            }"
+            :aria-pressed="activeTab === tab.id"
+            @click="selectTab(tab.id)"
+          >
+
+            {{ tab.label }}
+
+            <span v-if="tab.id === 'reviews'">
+              {{ gameReviews.length }}
+            </span>
+
+          </button>
+
+        </nav>
+
+        <!-- INFORMACJE O GRZE -->
+
+        <div
+          v-if="activeTab === 'overview'"
+          class="details-layout"
+        >
+
+          <div class="main-content">
+
+            <!-- OPIS -->
+
+            <section class="content-card">
+
+              <span class="section-label">
+                POZNAJ GRE
+              </span>
+
+              <h2>O grze</h2>
+
+              <p class="game-description">
+                {{ game.description }}
               </p>
 
-              <p
-                v-if="actionError"
-                class="feedback error"
-                role="alert"
-              >
-                {{ actionError }}
+            </section>
+
+            <!-- GATUNKI -->
+
+            <section class="content-card">
+
+              <h2>Gatunki gry</h2>
+
+              <p class="section-description">
+                Odkryj więcej gier w podobnym stylu.
               </p>
 
-              <RouterLink
-                to="/library"
-                class="library-link"
-              >
-                Przejdź do mojej biblioteki
-              </RouterLink>
+              <div class="category-links">
 
-            </template>
+                <RouterLink
+                  v-for="genre in game.genres"
+                  :key="genre"
+                  :to="{
+                    path: '/games',
+                    query: { genre }
+                  }"
+                >
+                  {{ genre }} →
+                </RouterLink>
 
-            <!-- Niezalogowany użytkownik -->
-            <template v-else>
+              </div>
 
-              <p class="login-notice">
-                Zaloguj się, aby dodawać gry
-                do własnej kolekcji.
-              </p>
+            </section>
 
-              <RouterLink
-                :to="{
-                  name: 'login',
-                  query: {
-                    redirect: route.fullPath
-                  }
-                }"
-                class="primary-button"
-              >
-                Zaloguj się
-              </RouterLink>
+            <!-- PLATFORMY -->
 
-            </template>
+            <section class="content-card">
+
+              <h2>Dostępne platformy</h2>
+
+              <div class="platform-grid">
+
+                <RouterLink
+                  v-for="platform in game.platforms"
+                  :key="platform"
+                  :to="{
+                    path: '/games',
+                    query: { platform }
+                  }"
+                  class="platform-card"
+                >
+
+                  <svg
+                    width="25"
+                    height="25"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    aria-hidden="true"
+                  >
+                    <rect
+                      x="3"
+                      y="4"
+                      width="18"
+                      height="13"
+                      rx="2"
+                    />
+                    <path d="M8 21h8m-4-4v4"/>
+                  </svg>
+
+                  <strong>{{ platform }}</strong>
+
+                </RouterLink>
+
+              </div>
+
+            </section>
+
+          </div>
+
+          <!-- PANEL BOCZNY -->
+
+          <aside class="sidebar">
+
+            <section class="information-card">
+
+              <div class="game-cover">
+
+                <img
+                  v-if="!coverFailed"
+                  :src="game.cover_url"
+                  :alt="game.title"
+                  @error="coverFailed = true"
+                />
+
+                <div
+                  v-else
+                  class="cover-placeholder"
+                >
+                  GAMEVERS
+                </div>
+
+              </div>
+
+              <div class="information-content">
+
+                <h2>Informacje o grze</h2>
+
+                <div
+                  v-for="item in gameInformation"
+                  :key="item.label"
+                  class="information-row"
+                >
+
+                  <span
+                    class="information-icon"
+                    aria-hidden="true"
+                  >
+                    {{ item.icon }}
+                  </span>
+
+                  <div>
+
+                    <span class="information-label">
+                      {{ item.label }}
+                    </span>
+
+                    <strong>
+                      {{ item.value || 'Brak danych' }}
+                    </strong>
+
+                  </div>
+
+                </div>
+
+                <a
+                  :href="`https://store.steampowered.com/app/${game.steam_id}/`"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="steam-link"
+                >
+                  Zobacz na Steam ↗
+                </a>
+
+              </div>
+
+            </section>
+
           </aside>
 
         </div>
 
-        <!-- NOWY MODUŁ: RECENZJE I OCENY -->
-        <GameReviews
-          :key="game.id"
-          :game-id="game.id"
-        />
+        <!-- RECENZJE -->
+
+        <section
+          v-if="activeTab === 'reviews'"
+          class="content-card reviews-section"
+        >
+
+          <div class="section-heading">
+
+            <div>
+
+              <span class="section-label">
+                SPOŁECZNOŚĆ
+              </span>
+
+              <h2>Recenzje graczy</h2>
+
+              <p class="section-description">
+                Przykładowe opinie o tej grze.
+              </p>
+
+            </div>
+
+            <span class="review-count">
+              {{ gameReviews.length }} recenzji
+            </span>
+
+          </div>
+
+          <div
+            v-if="gameReviews.length"
+            class="reviews-list"
+          >
+
+            <article
+              v-for="review in gameReviews"
+              :key="review.id"
+              class="review-card"
+            >
+
+              <div class="review-header">
+
+                <div class="avatar">
+                  {{ review.author.charAt(0) }}
+                </div>
+
+                <div class="review-author">
+
+                  <strong>{{ review.author }}</strong>
+
+                  <span>Przykładowa recenzja</span>
+
+                </div>
+
+                <span class="review-rating">
+                  ★ {{ formatRating(review.rating) }}
+                </span>
+
+              </div>
+
+              <p>{{ review.content }}</p>
+
+            </article>
+
+          </div>
+
+          <div
+            v-else
+            class="empty-reviews"
+          >
+
+            <span
+              class="empty-icon"
+              aria-hidden="true"
+            >
+              ☆
+            </span>
+
+            <h3>Brak przykładowych recenzji</h3>
+
+            <p>
+              Ta gra nie posiada jeszcze
+              recenzji w wersji demonstracyjnej.
+            </p>
+
+          </div>
+
+          <div class="review-notice">
+
+            <h3>Podziel się swoją opinią</h3>
+
+            <p>
+              Dodawanie i edytowanie recenzji
+              zostanie uruchomione po podłączeniu
+              backendu Laravel.
+            </p>
+
+          </div>
+
+        </section>
+
+        <!-- PODOBNE GRY -->
+
+        <section
+          v-if="
+            activeTab === 'overview' ||
+            activeTab === 'related'
+          "
+          class="related-section"
+        >
+
+          <div class="section-heading">
+
+            <div>
+
+              <span class="section-label">
+                ODKRYWAJ WIĘCEJ
+              </span>
+
+              <h2>Podobne gry</h2>
+
+              <p class="section-description">
+                Tytuły dopasowane na podstawie gatunków.
+              </p>
+
+            </div>
+
+            <RouterLink
+              to="/games"
+              class="section-link"
+            >
+              Zobacz katalog →
+            </RouterLink>
+
+          </div>
+
+          <div
+            v-if="relatedGames.length"
+            class="related-grid"
+          >
+
+            <PopularGameCard
+              v-for="relatedGame in relatedGames"
+              :key="relatedGame.id"
+              :game="relatedGame"
+              @add-to-library="addToLibrary(relatedGame)"
+            />
+
+          </div>
+
+          <div
+            v-else
+            class="content-card"
+          >
+            Nie znaleziono podobnych gier.
+          </div>
+
+        </section>
+
+        <p class="demo-notice">
+          Gamevers — wersja demonstracyjna.
+          Oceny i recenzje są przykładowe.
+        </p>
 
       </template>
 
+      <!-- NIEPRAWIDLOWE ID GRY -->
+
+      <section
+        v-else
+        class="not-found"
+      >
+
+        <span class="not-found-code">
+          404
+        </span>
+
+        <h1>Nie znaleziono gry</h1>
+
+        <p>
+          Gra o podanym identyfikatorze
+          nie istnieje w katalogu Gamevers.
+        </p>
+
+        <RouterLink
+          to="/games"
+          class="primary-button"
+        >
+          ← Wróć do katalogu
+        </RouterLink>
+
+      </section>
+
     </div>
+
   </main>
 </template>
 
 <style scoped>
+
+/* GLOWNY UKLAD */
+
 .details-page {
-  min-height: 80vh;
-  padding: 50px 20px 90px;
+  width: 100%;
+  min-height: 100vh;
+  padding: 24px 24px 50px;
+  background: #0B0F19;
   color: #F8FAFC;
+  text-align: left;
 }
 
 .details-container {
-  max-width: 1200px;
+  width: 100%;
+  max-width: 1400px;
+  min-width: 0;
   margin: 0 auto;
 }
 
-.back-link {
-  display: inline-block;
-  margin-bottom: 28px;
-  color: #A78BFA;
-  text-decoration: none;
-  font-size: 14px;
-  font-weight: 600;
+/* NAWIGACJA */
+
+.breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 20px;
+  color: #94A3B8;
+  font-size: 12px;
 }
 
-.back-link:hover {
+.breadcrumbs a {
+  color: #94A3B8;
+  text-decoration: none;
+}
+
+.breadcrumbs a:hover,
+.breadcrumbs span:last-child {
   color: #C4B5FD;
 }
 
-.game-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  gap: 28px;
-  align-items: start;
+/* BANER */
+
+.game-hero {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  min-height: 440px;
+  overflow: hidden;
+  background-color: #151B2B;
+  background-position: center;
+  background-size: cover;
+  border: 1px solid #293244;
+  border-radius: 15px;
 }
 
-.game-main {
+.banner-check {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.hero-content {
+  position: relative;
+  width: 100%;
+  max-width: 800px;
+  padding: 40px;
+}
+
+.hero-label,
+.section-label {
+  display: block;
+  margin-bottom: 15px;
+  color: #C4B5FD;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.8px;
+}
+
+.genre-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.genre-tags a {
+  padding: 6px 10px;
+  background: rgba(49,35,79,.9);
+  border: 1px solid #8B5CF6;
+  border-radius: 5px;
+  color: #E9D5FF;
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.genre-tags a:hover {
+  background: #44306B;
+}
+
+.hero-content h1 {
+  margin: 20px 0 10px;
+  color: #FFFFFF;
+  font-size: clamp(32px, 5vw, 62px);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -1.8px;
+  overflow-wrap: anywhere;
+}
+
+.hero-meta {
+  margin: 0;
+  color: #CBD5E1;
+  font-size: 14px;
+}
+
+/* OCENA */
+
+.hero-rating {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+  margin: 25px 0;
+}
+
+.rating-value {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #67E8F9;
+  font-size: 36px;
+  font-weight: 800;
+}
+
+.rating-value span {
+  font-size: 28px;
+}
+
+.rating-value small {
+  align-self: flex-end;
+  padding-bottom: 8px;
+  color: #94A3B8;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.rating-description {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 18px;
+  border-left: 1px solid #475569;
+}
+
+.rating-description strong {
+  color: #F8FAFC;
+  font-size: 13px;
+}
+
+.rating-description span {
+  color: #94A3B8;
+  font-size: 11px;
+}
+
+/* PRZYCISKI */
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.primary-button,
+.secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 46px;
+  padding: 12px 20px;
+  border-radius: 8px;
+  color: #FFFFFF;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background .2s,
+    border-color .2s;
+}
+
+.primary-button {
+  background: #8B5CF6;
+  border: 1px solid #8B5CF6;
+}
+
+.primary-button:hover {
+  background: #7C3AED;
+}
+
+.secondary-button {
+  background: rgba(21,27,43,.9);
+  border: 1px solid #475569;
+}
+
+.secondary-button:hover {
+  border-color: #8B5CF6;
+  background: #31234F;
+}
+
+.share-message {
+  margin: 12px 0 0;
+  color: #67E8F9;
+  font-size: 12px;
+}
+
+.share-message.error {
+  color: #FCA5A5;
+}
+
+.library-notice {
+  margin: 12px 0 0;
+  color: #CBD5E1;
+  font-size: 11px;
+}
+
+/* ZAKLADKI */
+
+.details-tabs {
+  display: flex;
+  gap: 25px;
+  margin: 24px 0;
+  overflow-x: auto;
+  border-bottom: 1px solid #293244;
+  scrollbar-width: thin;
+}
+
+.details-tabs button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  min-height: 48px;
+  padding: 10px 5px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #94A3B8;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.details-tabs button.active {
+  border-bottom-color: #8B5CF6;
+  color: #C4B5FD;
+}
+
+.details-tabs button:hover {
+  color: #F8FAFC;
+}
+
+.details-tabs button span {
+  padding: 2px 6px;
+  background: #31234F;
+  border-radius: 5px;
+  color: #C4B5FD;
+  font-size: 10px;
+}
+
+/* UKLAD TRESCI */
+
+.details-layout {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(280px, 340px);
+  align-items: start;
+  gap: 24px;
+}
+
+.main-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
   min-width: 0;
 }
 
-.cover-container {
-  width: 100%;
-  max-height: 460px;
-  aspect-ratio: 16 / 9;
-  overflow: hidden;
+.content-card,
+.information-card {
+  min-width: 0;
   background: #151B2B;
   border: 1px solid #293244;
-  border-radius: 16px;
+  border-radius: 12px;
+}
+
+.content-card {
+  padding: 26px;
+}
+
+.content-card h2,
+.information-content h2,
+.section-heading h2 {
+  margin: 0 0 14px;
+  color: #F8FAFC;
+  font-size: 21px;
+  font-weight: 750;
+  line-height: 1.3;
+}
+
+.game-description {
+  margin: 0;
+  color: #CBD5E1;
+  font-size: 14px;
+  line-height: 1.9;
+}
+
+.section-description {
+  margin: 0 0 18px;
+  color: #94A3B8;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* GATUNKI */
+
+.category-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.category-links a {
+  padding: 10px 13px;
+  background: #201B36;
+  border: 1px solid #44306B;
+  border-radius: 7px;
+  color: #C4B5FD;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.category-links a:hover {
+  border-color: #8B5CF6;
+  background: #31234F;
+}
+
+/* PLATFORMY */
+
+.platform-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(auto-fit, minmax(100px, 1fr));
+  gap: 10px;
+}
+
+.platform-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 100px;
+  padding: 14px;
+  background: #111827;
+  border: 1px solid #293244;
+  border-radius: 8px;
+  color: #C4B5FD;
+  text-align: center;
+  text-decoration: none;
+}
+
+.platform-card strong {
+  color: #CBD5E1;
+  font-size: 12px;
+}
+
+.platform-card:hover {
+  border-color: #8B5CF6;
+  background: #201B36;
+}
+
+/* PANEL BOCZNY */
+
+.sidebar {
+  min-width: 0;
+}
+
+.information-card {
+  overflow: hidden;
 }
 
 .game-cover {
+  aspect-ratio: 460 / 215;
+  overflow: hidden;
+  background: #201B36;
+}
+
+.game-cover img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
 .cover-placeholder {
+  display: grid;
+  place-items: center;
   width: 100%;
   height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 70px;
-}
-
-.game-information {
-  padding-top: 30px;
-}
-
-.eyebrow {
-  color: #A78BFA;
-  font-size: 12px;
+  color: #C4B5FD;
   font-weight: 800;
   letter-spacing: 2px;
 }
 
-.game-information h1 {
-  margin: 12px 0 18px;
-  font-size: 36px;
-  line-height: 1.2;
-  overflow-wrap: anywhere;
+.information-content {
+  padding: 22px;
 }
 
-.tags {
+.information-content h2 {
+  font-size: 17px;
+}
+
+.information-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
-  margin-bottom: 24px;
-}
-
-.tag {
-  padding: 8px 12px;
-  background: #22203A;
-  border: 1px solid #443B73;
-  border-radius: 7px;
-  color: #C4B5FD;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.description {
-  color: #CBD5E1;
-  line-height: 1.8;
-  margin-bottom: 30px;
-  white-space: pre-line;
-  overflow-wrap: anywhere;
-}
-
-.metadata {
-  background: #151B2B;
-  border: 1px solid #293244;
-  border-radius: 14px;
-  padding: 10px 22px;
-}
-
-.metadata-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 16px 0;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 15px 0;
   border-bottom: 1px solid #293244;
 }
 
-.metadata-row:last-child {
-  border-bottom: none;
+.information-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  background: #201B36;
+  border-radius: 7px;
+  color: #C4B5FD;
+  font-size: 19px;
 }
 
-.metadata-row span {
+.information-row > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.information-label {
   color: #94A3B8;
-  font-size: 14px;
+  font-size: 11px;
 }
 
-.metadata-row strong {
-  text-align: right;
-  font-size: 14px;
+.information-row strong {
+  color: #F8FAFC;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
   overflow-wrap: anywhere;
 }
 
-.library-panel {
-  position: sticky;
-  top: 100px;
-  padding: 24px;
-  background: #151B2B;
+.steam-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 43px;
+  margin-top: 20px;
+  padding: 10px;
+  background: #111827;
   border: 1px solid #293244;
-  border-radius: 16px;
+  border-radius: 7px;
+  color: #CBD5E1;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
 }
 
-.library-panel h2 {
-  margin: 0 0 10px;
-  font-size: 21px;
+.steam-link:hover {
+  border-color: #8B5CF6;
+  color: #FFFFFF;
 }
 
-.library-panel > p {
-  color: #94A3B8;
+/* NAGLOWKI SEKCJI */
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.section-heading .section-label {
+  margin-bottom: 9px;
+}
+
+.section-heading h2 {
+  margin-bottom: 7px;
+}
+
+.section-heading .section-description {
+  margin-bottom: 0;
+}
+
+.section-link {
+  color: #C4B5FD;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.section-link:hover {
+  color: #FFFFFF;
+}
+
+/* RECENZJE */
+
+.review-count {
+  flex-shrink: 0;
+  padding: 7px 10px;
+  background: #31234F;
+  border-radius: 6px;
+  color: #C4B5FD;
+  font-size: 11px;
+}
+
+.reviews-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.review-card {
+  padding: 20px;
+  background: #111827;
+  border: 1px solid #293244;
+  border-radius: 10px;
+}
+
+.review-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  background: #31234F;
+  border-radius: 50%;
+  color: #C4B5FD;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.review-author {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.review-author strong {
   font-size: 13px;
-  line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 
-.library-panel label {
-  display: block;
-  margin: 24px 0 9px;
+.review-author span {
+  color: #94A3B8;
+  font-size: 10px;
+}
+
+.review-rating {
+  margin-left: auto;
+  padding: 6px 9px;
+  background: #123443;
+  border-radius: 5px;
+  color: #67E8F9;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.review-card p {
+  margin: 18px 0 0;
   color: #CBD5E1;
   font-size: 13px;
-  font-weight: 600;
+  line-height: 1.8;
 }
 
-.library-panel select {
-  width: 100%;
-  padding: 12px;
-  background: #0B0F19;
-  border: 1px solid #293244;
-  border-radius: 9px;
-  color: #F8FAFC;
-  font-size: 13px;
-}
-
-.primary-button {
-  display: block;
-  width: 100%;
-  margin-top: 14px;
-  padding: 14px 12px;
-  box-sizing: border-box;
-  background: #8B5CF6;
-  border: none;
-  border-radius: 9px;
-  color: #FFFFFF;
+.empty-reviews {
+  padding: 35px 15px;
   text-align: center;
-  text-decoration: none;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
 }
 
-.primary-button:hover:not(:disabled) {
-  background: #7C3AED;
-}
-
-.primary-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.library-link {
+.empty-icon {
   display: block;
-  margin-top: 18px;
+  margin-bottom: 15px;
   color: #A78BFA;
-  text-align: center;
-  font-size: 13px;
-  text-decoration: none;
+  font-size: 45px;
 }
 
-.library-link:hover {
-  color: #C4B5FD;
+.empty-reviews h3 {
+  margin: 0 0 10px;
+  font-size: 17px;
 }
 
-.login-notice {
-  margin-top: 22px;
-}
-
-.feedback {
-  margin-top: 14px;
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-.feedback.success {
-  color: #6EE7B7;
-}
-
-.feedback.error {
-  color: #FCA5A5;
-}
-
-.state-message {
-  padding: 60px 24px;
-  background: #151B2B;
-  border: 1px solid #293244;
-  border-radius: 14px;
+.empty-reviews p {
   color: #94A3B8;
+  font-size: 13px;
+}
+
+.review-notice {
+  margin-top: 24px;
+  padding: 20px;
+  background: #201B36;
+  border: 1px solid #44306B;
+  border-radius: 9px;
+}
+
+.review-notice h3 {
+  margin: 0 0 10px;
+  color: #C4B5FD;
+  font-size: 15px;
+}
+
+.review-notice p {
+  margin: 0;
+  color: #94A3B8;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+/* PODOBNE GRY */
+
+.related-section {
+  margin-top: 35px;
+}
+
+.related-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(4, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 18px;
+}
+
+.demo-notice {
+  margin: 30px 0 0;
+  color: #94A3B8;
+  font-size: 11px;
   text-align: center;
 }
 
-.state-message.error {
-  color: #FCA5A5;
+/* NIE ZNALEZIONO GRY */
+
+.not-found {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 500px;
+  padding: 30px;
+  text-align: center;
 }
 
-.state-message button {
-  margin-top: 15px;
-  padding: 12px 20px;
-  background: #8B5CF6;
-  border: none;
-  border-radius: 8px;
-  color: #FFFFFF;
-  cursor: pointer;
+.not-found-code {
+  color: #8B5CF6;
+  font-size: clamp(65px, 12vw, 120px);
+  font-weight: 800;
+  line-height: 1;
 }
 
-@media (max-width: 900px) {
-  .game-layout {
-    grid-template-columns: 1fr;
+.not-found h1 {
+  margin: 20px 0 10px;
+  font-size: 28px;
+}
+
+.not-found p {
+  max-width: 400px;
+  margin: 0 0 25px;
+  color: #94A3B8;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+/* DOSTEPNOSC */
+
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid #C4B5FD;
+  outline-offset: 3px;
+}
+
+/* TABLETY */
+
+@media (max-width: 1000px) {
+
+  .details-layout {
+    grid-template-columns:
+      minmax(0, 1fr)
+      minmax(250px, 290px);
+    gap: 18px;
   }
 
-  .library-panel {
-    position: static;
+  .related-grid {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
   }
+
+  .hero-content {
+    padding: 30px;
+  }
+
 }
+
+@media (max-width: 800px) {
+
+  .details-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebar {
+    width: 100%;
+  }
+
+  .game-cover {
+    max-height: 250px;
+  }
+
+}
+
+/* TELEFONY */
 
 @media (max-width: 600px) {
+
   .details-page {
-    padding: 35px 16px 70px;
+    padding: 14px 14px 35px;
   }
 
-  .game-information h1 {
-    font-size: 28px;
-  }
-
-  .cover-container {
-    aspect-ratio: 4 / 3;
-  }
-
-  .metadata-row {
-    flex-direction: column;
+  .breadcrumbs {
     gap: 7px;
+    margin-bottom: 14px;
+    font-size: 11px;
   }
 
-  .metadata-row strong {
-    text-align: left;
+  .game-hero {
+    min-height: 480px;
+    background-position: 65% center;
+    border-radius: 12px;
   }
+
+  .hero-content {
+    padding: 22px;
+    background: linear-gradient(
+      0deg,
+      rgba(11,15,25,.98),
+      rgba(11,15,25,.7) 75%,
+      transparent
+    );
+  }
+
+  .hero-content h1 {
+    margin-top: 16px;
+    font-size: 34px;
+    letter-spacing: -1px;
+  }
+
+  .hero-label {
+    font-size: 9px;
+  }
+
+  .hero-meta {
+    font-size: 12px;
+  }
+
+  .genre-tags {
+    gap: 5px;
+  }
+
+  .genre-tags a {
+    padding: 5px 7px;
+    font-size: 10px;
+  }
+
+  .hero-rating {
+    gap: 12px;
+    margin: 20px 0;
+  }
+
+  .rating-value {
+    font-size: 30px;
+  }
+
+  .rating-value span {
+    font-size: 23px;
+  }
+
+  .rating-description {
+    padding-left: 12px;
+  }
+
+  .rating-description span {
+    font-size: 10px;
+  }
+
+  .hero-actions {
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .hero-actions button {
+    width: 100%;
+    min-height: 46px;
+  }
+
+  .details-tabs {
+    gap: 17px;
+    margin: 16px 0 20px;
+  }
+
+  .details-tabs button {
+    font-size: 12px;
+  }
+
+  .main-content {
+    gap: 14px;
+  }
+
+  .content-card {
+    padding: 19px;
+  }
+
+  .content-card h2,
+  .section-heading h2 {
+    font-size: 19px;
+  }
+
+  .game-description {
+    font-size: 13px;
+  }
+
+  .platform-grid {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+
+  .platform-card {
+    min-height: 90px;
+  }
+
+  .information-content {
+    padding: 19px;
+  }
+
+  .section-heading {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .related-section {
+    margin-top: 28px;
+  }
+
+  .related-grid {
+    gap: 11px;
+  }
+
+  .review-card {
+    padding: 14px;
+  }
+
+  .review-header {
+    gap: 8px;
+  }
+
+  .avatar {
+    width: 34px;
+    height: 34px;
+    font-size: 14px;
+  }
+
+  .review-author strong {
+    font-size: 12px;
+  }
+
+  .review-rating {
+    font-size: 11px;
+  }
+
 }
+
+/* MALE TELEFONY */
+
+@media (max-width: 360px) {
+
+  .details-page {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .hero-content {
+    padding: 17px;
+  }
+
+  .hero-content h1 {
+    font-size: 29px;
+  }
+
+  .details-tabs {
+    gap: 10px;
+  }
+
+  .related-grid {
+    gap: 8px;
+  }
+
+}
+
+/* OGRANICZENIE ANIMACJI */
+
+@media (prefers-reduced-motion: reduce) {
+
+  .primary-button,
+  .secondary-button {
+    transition: none;
+  }
+
+}
+
 </style>
