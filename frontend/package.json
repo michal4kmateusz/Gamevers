@@ -1,23 +1,27 @@
-JSON
 
 {
   "name": "gamevers-frontend",
+  "version": "1.0.0",
   "private": true,
-  "version": "0.1.0",
   "type": "module",
+  "description": "Gamevers - nowoczesny portal gamingowy",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "vue": "^3.5.0",
+    "axios": "^1.8.4",
+    "pinia": "^3.0.1",
+    "vue": "^3.5.13",
     "vue-router": "^4.5.0",
-    "pinia": "^3.0.0",
-    "axios": "^1.8.0"
+    "lucide-vue-next": "^0.468.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^5.2.0",
-    "vite": "^6.2.0"
+    "@vitejs/plugin-vue": "^5.2.3",
+    "vite": "^6.2.5"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   }
 }
