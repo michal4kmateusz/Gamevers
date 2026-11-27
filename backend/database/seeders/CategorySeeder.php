@@ -53,10 +53,14 @@ class CategorySeeder extends Seeder
         ];
 
         foreach ($categories as $category) {
-            Category::updateOrCreate(
+            Category::firstOrCreate(
                 ['slug' => $category['slug']],
                 $category
             );
         }
+
+        $this->command->info(
+            'Kategorie podstawowe sa gotowe.'
+        );
     }
 }

@@ -2,24 +2,33 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use App\Models\Game;
+use App\Models\Category;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
-    /**
-     * Seed the application's database.
-     */
     public function run(): void
     {
-        // User::factory(10)->create();
+        DB::transaction(function () {
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+            if (Game::exists() || Category::exists()) {
+                $this->command->info(
+                    'Katalog juz istnieje. Pomijam import.'
+                );
+
+                return;
+            }
+
+            $this->call([
+                CategorySeeder::class,
+                CatalogSeeder::class,
+            ]);
+
+            $this->command->info(
+                'Baza Gamevers zostala przygotowana.'
+            );
+        });
     }
 }

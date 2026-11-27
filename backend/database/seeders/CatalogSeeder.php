@@ -7,29 +7,47 @@ use App\Models\Category;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 class CatalogSeeder extends Seeder
 {
     public function run(): void
     {
+        $path = database_path('data/games.json');
+
+        if (!is_readable($path)) {
+            throw new RuntimeException(
+                'Nie znaleziono pliku games.json.'
+            );
+        }
+
         $games = json_decode(
-            file_get_contents(
-                database_path('data/games.json')
-            ),
+            file_get_contents($path),
             true,
             512,
             JSON_THROW_ON_ERROR
         );
 
-        DB::transaction(function () use ($games) {
+        if (!is_array($games) || empty($games)) {
+            throw new RuntimeException(
+                'Katalog gier jest pusty lub nieprawidlowy.'
+            );
+        }
+
+        $imported = 0;
+
+        DB::transaction(function () use ($games, &$imported) {
 
             foreach ($games as $item) {
 
-                $game = Game::firstOrNew([
-                    'slug' => $item['slug']
-                ]);
+                if (Game::where('slug', $item['slug'])->exists()) {
+                    continue;
+                }
+
+                $game = new Game();
 
                 $game->forceFill([
+                    'slug' => $item['slug'],
                     'title' => $item['title'],
                     'description' => $item['description'],
 
@@ -77,24 +95,13 @@ class CatalogSeeder extends Seeder
                 }
 
                 $game->categories()->sync($categoryIds);
-            }
 
-            Game::whereIn('slug', [
-                'space-shooter',
-                'turbo-racing',
-                'puzzle-master',
-                'fantasy-world',
-                'city-builder'
-            ])->update([
-                'is_active' => false
-            ]);
+                $imported++;
+            }
         });
 
         $this->command->info(
-            'Zaimportowano katalog: '
-            . count($games)
-            . ' gier.'
+            'Zaimportowano nowych gier: ' . $imported
         );
     }
 }
-
