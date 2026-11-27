@@ -1,4 +1,3 @@
-
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 
@@ -12,23 +11,29 @@ async function initializeApp() {
   const app = createApp(App)
   const pinia = createPinia()
 
+  // Uruchomienie Pinia
   app.use(pinia)
-  app.use(router)
 
+  // Pobranie magazynu uwierzytelniania
   const authStore = useAuthStore(pinia)
 
-  // Sprawdzenie sesji użytkownika przy starcie
+  // Przywrócenie sesji użytkownika
   try {
     await authStore.fetchUser()
   } catch (error) {
-    // Brak dostępnego backendu nie powinien
-    // blokować wyświetlenia aplikacji.
     console.warn(
       'Nie udało się sprawdzić sesji użytkownika.',
       error
     )
   }
 
+  // Uruchomienie routera po sprawdzeniu sesji
+  app.use(router)
+
+  // Oczekiwanie na gotowość routera
+  await router.isReady()
+
+  // Wyświetlenie aplikacji
   app.mount('#app')
 }
 

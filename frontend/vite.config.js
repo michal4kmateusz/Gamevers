@@ -1,32 +1,32 @@
 
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import { fileURLToPath, URL } from 'node:url'
+
+const backend = {
+  target: 'http://backend:8000',
+  changeOrigin: true
+}
 
 export default defineConfig({
-  plugins: [
-    vue()
-  ],
-
-  base: './',
-
-  resolve: {
-    alias: {
-      '@': fileURLToPath(
-        new URL('./src', import.meta.url)
-      )
-    }
-  },
+  plugins: [vue()],
 
   server: {
     host: '0.0.0.0',
-    port: 5173
-  },
+    port: 5173,
 
-  build: {
-    outDir: 'dist',
-    assetsDir: 'assets',
-    sourcemap: false,
-    emptyOutDir: true
+    watch: {
+      usePolling: true
+    },
+
+    proxy: {
+      '/api': backend,
+      '/sanctum': backend,
+      '/login': backend,
+      '/register': backend,
+      '/logout': backend
+    }
   }
 })
+
+
+

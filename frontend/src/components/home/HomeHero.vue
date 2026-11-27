@@ -9,6 +9,10 @@ import {
 } from 'vue'
 
 import { RouterLink } from 'vue-router'
+import { getGames } from '../../services/gameService'
+import { useAuthStore } from '../../stores/authStore'
+
+const authStore = useAuthStore()
 
 import {
   useLibraryStore,
@@ -19,38 +23,32 @@ const libraryStore = useLibraryStore()
 
 /* POLECANE GRY */
 
-const slides = [
-  {
-    id: 1,
-    title: 'Cyberpunk 2077',
-    headline: 'Night City nie śpi. Ty też nie zechcesz.',
-    description: 'Zanurz się w otwartym świecie przyszłości. Zbuduj swoją legendę w mieście, w którym wszystko ma swoją cenę.',
-    rating: '9.8',
-    genre: 'RPG akcji',
-    platforms: 'PC · PS5 · Xbox',
-    image: 'https://cdn.akamai.steamstatic.com/steam/apps/1091500/library_hero.jpg'
-  },
-  {
-    id: 2,
-    title: 'Elden Ring',
-    headline: 'Odkryj świat pełen tajemnic.',
-    description: 'Wyrusz w niezwykłą podróż przez ogromny świat fantasy i odkryj jego sekrety.',
-    rating: '9.3',
-    genre: 'RPG',
-    platforms: 'PC · PlayStation · Xbox',
-    image: 'https://cdn.akamai.steamstatic.com/steam/apps/1245620/library_hero.jpg'
-  },
-  {
-    id: 3,
-    title: "Baldur's Gate 3",
-    headline: 'Twoja historia. Twoje decyzje.',
-    description: 'Stwórz własną drużynę i odkryj świat, w którym każda decyzja ma znaczenie.',
-    rating: '9.6',
-    genre: 'RPG turowe',
-    platforms: 'PC · PS5 · Xbox',
-    image: 'https://cdn.akamai.steamstatic.com/steam/apps/1086940/library_hero.jpg'
+const slides = ref([])
+
+async function loadSlides() {
+  try {
+    const response = await getGames({
+      featured: 1,
+      per_page: 5
+    })
+
+    slides.value = response.data.map(game => ({
+      id: game.id,
+      slug: game.slug,
+      title: game.title,
+      headline: game.title,
+      description: game.short_description || game.description,
+      rating: game.rating ?? '—',
+      genre: game.genres?.join(' · ') || 'Brak kategorii',
+      platforms: game.platforms?.join(' · ') || '',
+      image: game.banner_url || game.cover_url || ''
+    }))
+
+    activeIndex.value = 0
+  } catch {
+    slides.value = []
   }
-]
+}
 
 /* STAN SLAJDERA */
 
@@ -60,27 +58,27 @@ const hovered = ref(false)
 const focused = ref(false)
 
 const activeSlide = computed(() =>
-  slides[activeIndex.value]
+  slides.value[activeIndex.value]
 )
 
 const currentNumber = computed(() =>
   String(activeIndex.value + 1).padStart(2, '0')
 )
 
-const totalNumber = String(
-  slides.length
-).padStart(2, '0')
+const totalNumber = computed(() =>
+  String(slides.value.length).padStart(2, '0')
+)
 
 let timer = null
 
 /* BIBLIOTEKA */
 
 const isSaved = computed(() =>
-  libraryStore.hasGame(activeSlide.value.id)
+  activeSlide.value ? libraryStore.hasGame(activeSlide.value.id) : false
 )
 
 const currentStatus = computed(() =>
-  libraryStore.getStatus(activeSlide.value.id)
+  activeSlide.value ? libraryStore.getStatus(activeSlide.value.id) : null
 )
 
 const statusInformation = computed(() =>
@@ -112,14 +110,21 @@ function showNotification(
 
 /* DODAWANIE I USUWANIE GRY */
 
-function toggleLibrary() {
+async function toggleLibrary() {
+  if (!activeSlide.value || libraryStore.saving) return
+
+  if (!authStore.isAuthenticated) {
+    showNotification('Najpierw się zaloguj.', 'error')
+    return
+  }
+
   const game = activeSlide.value
 
   const wasSaved = libraryStore.hasGame(
     game.id
   )
 
-  const success = libraryStore.toggleGame(
+  const success = await libraryStore.toggleGame(
     game.id
   )
 
@@ -143,14 +148,18 @@ function toggleLibrary() {
 /* STEROWANIE SLAJDEREM */
 
 function nextSlide() {
+  if (!slides.value.length) return
+
   activeIndex.value =
-    (activeIndex.value + 1) % slides.length
+    (activeIndex.value + 1) % slides.value.length
 }
 
 function previousSlide() {
+  if (!slides.value.length) return
+
   activeIndex.value =
-    (activeIndex.value - 1 + slides.length) %
-    slides.length
+    (activeIndex.value - 1 + slides.value.length) %
+    slides.value.length
 }
 
 function selectSlide(index) {
@@ -182,6 +191,8 @@ watch(activeIndex, () => {
 /* AUTOMATYCZNE SLAJDY */
 
 onMounted(() => {
+  loadSlides()
+
   paused.value = window.matchMedia(
     '(prefers-reduced-motion: reduce)'
   ).matches
@@ -212,6 +223,7 @@ onUnmounted(() => {
 <template>
   <section
     class="home-hero"
+    v-if="activeSlide"
     aria-label="Polecane gry"
     @mouseenter="hovered = true"
     @mouseleave="hovered = false"
@@ -293,7 +305,7 @@ onUnmounted(() => {
           <div class="hero-actions">
 
             <RouterLink
-              :to="`/games/${activeSlide.id}`"
+              :to="`/games/${activeSlide.slug}`"
               class="primary-button"
             >
 
@@ -306,6 +318,7 @@ onUnmounted(() => {
             <button
               type="button"
               class="secondary-button"
+              :disabled="libraryStore.saving"
               :class="{ saved: isSaved }"
               :aria-pressed="isSaved"
               :aria-label="

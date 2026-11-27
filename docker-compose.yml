@@ -1,0 +1,51 @@
+services:
+  frontend:
+    image: node:22
+    container_name: gamevers-frontend
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend_modules:/app/node_modules
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: gamevers-backend
+    working_dir: /app
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "composer install && php artisan serve --host=0.0.0.0 --port=8000"
+
+  db:
+    image: mysql:8.4
+    container_name: gamevers-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: gamevers
+      MYSQL_USER: gamevers
+      MYSQL_PASSWORD: gamevers_password
+      MYSQL_ROOT_PASSWORD: gamevers_root_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  frontend_modules:
+  mysql_data:
+
+

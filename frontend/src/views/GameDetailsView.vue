@@ -4,11 +4,14 @@ import { ref, computed, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 
 import PopularGameCard from '../components/games/PopularGameCard.vue'
+import GameReviews from '../components/games/GameReviews.vue'
 
 import {
-  getGameById,
-  getRelatedGames
-} from '../data/games'
+  getGame,
+  getGames
+} from '../services/gameService'
+
+import { useAuthStore } from '../stores/authStore'
 
 import {
   useLibraryStore,
@@ -16,19 +19,18 @@ import {
 } from '../stores/libraryStore'
 
 const route = useRoute()
+const authStore = useAuthStore()
 const libraryStore = useLibraryStore()
 
-/* DANE GRY */
+/* DANE Z API */
 
-const game = computed(() =>
-  getGameById(route.params.id)
-)
+const game = ref(null)
+const relatedGames = ref([])
+const loading = ref(true)
+const error = ref('')
+const notFound = ref(false)
 
-const relatedGames = computed(() =>
-  game.value
-    ? getRelatedGames(game.value.id, 4)
-    : []
-)
+let requestVersion = 0
 
 /* STAN INTERFEJSU */
 
@@ -39,6 +41,71 @@ const notification = ref('')
 const notificationType = ref('success')
 const selectedStatus = ref('wishlist')
 const copied = ref(false)
+
+/* POBIERANIE GRY */
+
+async function fetchGame() {
+  const version = ++requestVersion
+
+  loading.value = true
+  error.value = ''
+  notFound.value = false
+  game.value = null
+  relatedGames.value = []
+
+  try {
+    const result = await getGame(route.params.slug)
+
+    if (version !== requestVersion) return
+
+    game.value = result
+
+    loading.value = false
+
+    await fetchRelatedGames(result, version)
+
+  } catch (err) {
+    if (version !== requestVersion) return
+
+    notFound.value = err.response?.status === 404
+
+    error.value = notFound.value
+      ? 'Nie znaleziono gry.'
+      : 'Nie udało się pobrać danych gry.'
+
+  } finally {
+    if (version === requestVersion) {
+      loading.value = false
+    }
+  }
+}
+
+/* PODOBNE GRY */
+
+async function fetchRelatedGames(currentGame, version) {
+  const category = currentGame.categories?.[0]
+
+  if (!category?.slug) return
+
+  try {
+    const response = await getGames({
+      category: category.slug,
+      per_page: 5,
+      sort: 'popular'
+    })
+
+    if (version !== requestVersion) return
+
+    relatedGames.value = response.data
+      .filter(item => item.id !== currentGame.id)
+      .slice(0, 4)
+
+  } catch {
+    if (version === requestVersion) {
+      relatedGames.value = []
+    }
+  }
+}
 
 /* BIBLIOTEKA */
 
@@ -64,44 +131,63 @@ const currentStatusColor = computed(() =>
   )?.color || '#94A3B8'
 )
 
+/* POWIADOMIENIA */
+
 function showNotification(message, type = 'success') {
   notification.value = message
   notificationType.value = type
 }
 
-/* DODAWANIE DO BIBLIOTEKI */
+function canEditLibrary() {
+  if (!authStore.isAuthenticated) {
+    showNotification(
+      'Zaloguj się, aby korzystać z biblioteki.',
+      'error'
+    )
 
-function addToLibrary() {
-  if (!game.value || isSaved.value) {
+    return false
+  }
+
+  return !libraryStore.saving
+}
+
+/* DODAWANIE GRY */
+
+async function addToLibrary() {
+  if (!game.value || isSaved.value || !canEditLibrary()) {
     return
   }
 
-  const success = libraryStore.addGame(
-    game.value.id,
+  const currentGame = game.value
+
+  const success = await libraryStore.addGame(
+    currentGame.id,
     selectedStatus.value
   )
 
   if (success) {
     showNotification(
-      `${game.value.title} dodano do biblioteki.`
+      `${currentGame.title} dodano do biblioteki.`
     )
   } else {
-    showNotification(libraryStore.error, 'error')
+    showNotification(
+      libraryStore.error || 'Nie udało się dodać gry.',
+      'error'
+    )
   }
 }
 
 /* ZMIANA STATUSU */
 
-function changeStatus(event) {
-  if (!game.value) {
+async function changeStatus(event) {
+  if (!game.value || !canEditLibrary()) {
+    event.target.value = currentStatus.value
     return
   }
 
-  const status = event.target.value
-
-  const success = libraryStore.updateStatus(
+  const success = await libraryStore.updateStatus(
     game.value.id,
-    status
+    event.target.value
   )
 
   if (success) {
@@ -109,14 +195,17 @@ function changeStatus(event) {
   } else {
     event.target.value = currentStatus.value
 
-    showNotification(libraryStore.error, 'error')
+    showNotification(
+      libraryStore.error || 'Nie udało się zmienić statusu.',
+      'error'
+    )
   }
 }
 
 /* USUWANIE GRY */
 
-function removeFromLibrary() {
-  if (!game.value || !isSaved.value) {
+async function removeFromLibrary() {
+  if (!game.value || !isSaved.value || !canEditLibrary()) {
     return
   }
 
@@ -126,7 +215,7 @@ function removeFromLibrary() {
     return
   }
 
-  const success = libraryStore.removeGame(
+  const success = await libraryStore.removeGame(
     game.value.id
   )
 
@@ -137,27 +226,22 @@ function removeFromLibrary() {
       'Usunięto grę z biblioteki.'
     )
   } else {
-    showNotification(libraryStore.error, 'error')
+    showNotification(
+      libraryStore.error || 'Nie udało się usunąć gry.',
+      'error'
+    )
   }
 }
 
-/* ZAPISYWANIE PODOBNYCH GIER */
+async function toggleRelatedGame(relatedGame) {
+  if (!canEditLibrary()) return
 
-function toggleRelatedGame(relatedGame) {
-  const wasSaved = libraryStore.hasGame(
-    relatedGame.id
-  )
-
-  const success = libraryStore.toggleGame(
+  const success = await libraryStore.toggleGame(
     relatedGame.id
   )
 
   if (success) {
-    showNotification(
-      wasSaved
-        ? `Usunięto ${relatedGame.title} z biblioteki.`
-        : `Dodano ${relatedGame.title} do biblioteki.`
-    )
+    showNotification('Zaktualizowano bibliotekę.')
   } else {
     showNotification(libraryStore.error, 'error')
   }
@@ -171,36 +255,36 @@ const tabs = [
   { id: 'related', label: 'Podobne gry' }
 ]
 
-/* RECENZJE DEMONSTRACYJNE */
+/* RECENZJE - DO POZNIEJSZEJ INTEGRACJI */
 
-const demoReviews = [
-  {
-    id: 1,
-    gameId: 1,
-    author: 'NeonRaven',
-    rating: 9.0,
-    content: 'Night City wciąga od pierwszej minuty. Świetnie napisane postacie i wyjątkowy klimat.'
-  },
-  {
-    id: 2,
-    gameId: 6,
-    author: 'Luna.exe',
-    rating: 9.5,
-    content: 'Każdy zakątek skrywa coś nowego. Muzyka, klimat i wyjątkowy świat tworzą niesamowitą przygodę.'
+async function refreshGameRating(gameId) {
+  const version = requestVersion
+  const slug = route.params.slug
+
+  if (Number(game.value?.id) !== Number(gameId)) return
+
+  try {
+    const updatedGame = await getGame(slug)
+
+    if (version !== requestVersion) return
+    if (Number(game.value?.id) !== Number(gameId)) return
+
+    game.value = updatedGame
+  } catch {
+    showNotification(
+      'Nie udalo sie odswiezyc oceny gry.',
+      'error'
+    )
   }
-]
-
-const gameReviews = computed(() =>
-  game.value
-    ? demoReviews.filter(
-        review => review.gameId === game.value.id
-      )
-    : []
-)
+}
 
 /* FORMATOWANIE */
 
 function formatRating(rating) {
+  if (rating == null || rating === '') {
+    return '—'
+  }
+
   const value = Number(rating)
 
   return Number.isFinite(value)
@@ -209,11 +293,11 @@ function formatRating(rating) {
 }
 
 function formatDate(date) {
-  if (!date) {
-    return 'Brak informacji'
-  }
+  if (!date) return 'Brak informacji'
 
-  const parsed = new Date(`${date}T00:00:00`)
+  const parsed = new Date(
+    String(date).slice(0, 10) + 'T00:00:00'
+  )
 
   if (Number.isNaN(parsed.getTime())) {
     return 'Brak informacji'
@@ -229,7 +313,10 @@ function formatDate(date) {
 /* BANER */
 
 const heroStyle = computed(() => {
-  if (!game.value || bannerFailed.value) {
+  if (
+    !game.value?.banner_url ||
+    bannerFailed.value
+  ) {
     return {}
   }
 
@@ -251,12 +338,10 @@ const heroStyle = computed(() => {
   }
 })
 
-/* INFORMACJE TECHNICZNE */
+/* INFORMACJE O GRZE */
 
 const gameInformation = computed(() => {
-  if (!game.value) {
-    return []
-  }
+  if (!game.value) return []
 
   return [
     {
@@ -276,12 +361,12 @@ const gameInformation = computed(() => {
     },
     {
       label: 'Gatunki',
-      value: game.value.genres.join(' · '),
+      value: game.value.genres?.join(' · '),
       icon: '◈'
     },
     {
       label: 'Platformy',
-      value: game.value.platforms.join(' · '),
+      value: game.value.platforms?.join(' · '),
       icon: '▣'
     }
   ]
@@ -298,6 +383,7 @@ async function shareGame() {
     copied.value = true
 
     showNotification('Skopiowano link do gry.')
+
   } catch {
     showNotification(
       'Nie udało się skopiować linku.',
@@ -306,10 +392,10 @@ async function shareGame() {
   }
 }
 
-/* ZMIANA PODSTRONY */
+/* OBSLUGA ZMIANY ADRESU */
 
 watch(
-  () => route.params.id,
+  () => route.params.slug,
   () => {
     activeTab.value = 'overview'
     coverFailed.value = false
@@ -318,11 +404,9 @@ watch(
     selectedStatus.value = 'wishlist'
     copied.value = false
 
-    window.scrollTo({
-      top: 0,
-      behavior: 'auto'
-    })
-  }
+    fetchGame()
+  },
+  { immediate: true }
 )
 </script>
 
@@ -330,7 +414,18 @@ watch(
   <main class="details-page">
     <div class="details-container">
 
-      <template v-if="game">
+      <section v-if="loading" class="not-found">
+      <h1>Wczytywanie gry...</h1>
+    </section>
+
+    <section v-else-if="error" class="not-found">
+      <h1>{{ error }}</h1>
+      <RouterLink to="/games">
+        Wróć do katalogu
+      </RouterLink>
+    </section>
+
+    <template v-else-if="game">
 
         <!-- NAWIGACJA -->
 
@@ -363,6 +458,7 @@ watch(
         >
 
           <img
+            v-if="game.banner_url"
             class="banner-check"
             :src="game.banner_url"
             alt=""
@@ -408,7 +504,15 @@ watch(
 
               <div class="rating-description">
                 <b>Ocena gry</b>
-                <span>Ocena demonstracyjna</span>
+                <span>
+                  {{
+                    game.is_demo_rating
+                      ? 'Ocena demonstracyjna'
+                      : game.has_reviews
+                        ? 'Ocena społeczności'
+                        : 'Brak ocen społeczności'
+                  }}
+                </span>
               </div>
 
             </div>
@@ -559,9 +663,8 @@ watch(
 
             </button>
 
-            <p class="library-notice">
-              Biblioteka demo — zapis lokalny,
-              bez konieczności logowania.
+            <p v-if="!authStore.isAuthenticated" class="library-notice">
+              Zaloguj się, aby zapisywać gry w swojej bibliotece.
             </p>
 
           </div>
@@ -612,7 +715,7 @@ watch(
             {{ tab.label }}
 
             <span v-if="tab.id === 'reviews'">
-              {{ gameReviews.length }}
+              {{ game.reviews_count || 0 }}
             </span>
 
           </button>
@@ -714,7 +817,7 @@ watch(
             <div class="game-cover">
 
               <img
-                v-if="!coverFailed"
+                v-if="game.cover_url && !coverFailed"
                 :src="game.cover_url"
                 :alt="game.title"
                 @error="coverFailed = true"
@@ -770,73 +873,12 @@ watch(
 
         <!-- RECENZJE -->
 
-        <section
+        <GameReviews
           v-if="activeTab === 'reviews'"
-          class="content-card"
-        >
-
-          <span class="section-label">
-            SPOŁECZNOŚĆ
-          </span>
-
-          <h2>Recenzje graczy</h2>
-
-          <p class="section-description">
-            Przykładowe opinie o tej grze.
-          </p>
-
-          <div
-            v-if="gameReviews.length"
-            class="reviews-list"
-          >
-
-            <article
-              v-for="review in gameReviews"
-              :key="review.id"
-              class="review-card"
-            >
-
-              <div class="review-header">
-
-                <div class="avatar">
-                  {{ review.author.charAt(0) }}
-                </div>
-
-                <div class="review-author">
-                  <strong>{{ review.author }}</strong>
-                  <span>Przykładowa recenzja</span>
-                </div>
-
-                <span class="review-rating">
-                  ★ {{ formatRating(review.rating) }}
-                </span>
-
-              </div>
-
-              <p>{{ review.content }}</p>
-
-            </article>
-
-          </div>
-
-          <div v-else class="empty-reviews">
-            <span>☆</span>
-            <h3>Brak przykładowych recenzji</h3>
-            <p>Ta gra nie posiada jeszcze recenzji.</p>
-          </div>
-
-          <div class="review-notice">
-
-            <h3>Podziel się swoją opinią</h3>
-
-            <p>
-              Dodawanie recenzji zostanie uruchomione
-              po podłączeniu backendu Laravel.
-            </p>
-
-          </div>
-
-        </section>
+          :key="game.id"
+          :game-id="game.id"
+          @updated="refreshGameRating"
+        />
 
         <!-- PODOBNE GRY -->
 
@@ -893,7 +935,7 @@ watch(
 
         <p class="demo-notice">
           Gamevers — wersja demonstracyjna.
-          Oceny i recenzje są przykładowe.
+          Katalog gier połączony z API Laravel.
         </p>
 
       </template>

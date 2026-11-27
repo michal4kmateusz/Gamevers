@@ -1,31 +1,128 @@
 
-# Environment files
+# ==========================================
+# GAMEVERS - GITIGNORE
+# Laravel + Vue + Docker + MySQL
+# ==========================================
+
+# ENV - hasla, klucze i konfiguracja lokalna
 .env
 .env.*
 !.env.example
-
-# Dependencies
-node_modules/
-vendor/
-
-# Vue / Vite
-frontend/dist/
-frontend/node_modules/
+!.env.testing.example
+.envrc
+auth.json
+*.pem
+*.key
 
 # Laravel
-backend/vendor/
-backend/storage/logs/*
-backend/bootstrap/cache/*.php
+/backend/vendor/
+/backend/node_modules/
+/backend/public/build/
+/backend/public/hot
+/backend/public/storage
+/backend/storage/*.key
+/backend/storage/logs/*.log
+/backend/storage/framework/cache/data/*
+/backend/storage/framework/sessions/*
+/backend/storage/framework/views/*.php
+/backend/bootstrap/cache/*.php
+/backend/.phpunit.cache/
+/backend/.phpunit.result.cache
+/backend/database/*.sqlite
+/backend/database/*.sqlite-*
 
-# IDE
+# Vue / Vite / Node.js
+/frontend/node_modules/
+/frontend/dist/
+/frontend/dist-ssr/
+/frontend/.vite/
+/frontend/coverage/
+/frontend/.cache/
+
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.local
+
+# Docker
+/docker-compose.override.yml
+/compose.override.yaml
+/mysql_data/
+/docker-data/
+/db-data/
+
+# Bazy danych i kopie zapasowe
+*.sql
+*.sql.gz
+*.sqlite
+*.sqlite3
+*.dump
+*.bak
+*.backup
+/backups/
+
+# Raporty diagnostyczne
+/gamevers-*.txt
+/Wklejony tekst*.txt
+
+# Logi
+*.log
+logs/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Edytory kodu
 .idea/
 .vscode/
+.fleet/
+*.swp
+*.swo
+*.sublime-workspace
 
-# System files
-.DS_Store
+# Windows
 Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
 
-# Logs
-*.log
-npm-debug.log*
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Pliki tymczasowe
+*.tmp
+*.temp
+*.orig
+*~
+
+# ==========================================
+# PLIKI WYSYLANE NA GITHUB
+# ==========================================
+
+# Przykladowa konfiguracja
+!.env.example
+
+# Docker
+!/docker-compose.yml
+!/backend/Dockerfile
+
+# Zaleznosci projektu
+!/backend/composer.json
+!/backend/composer.lock
+!/frontend/package.json
+!/frontend/package-lock.json
+
+# Dane katalogu gier
+!/backend/database/data/
+!/backend/database/data/games.json
+
+# Grafiki gier
+!/frontend/public/images/
+!/frontend/public/images/games/
+
 

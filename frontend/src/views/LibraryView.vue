@@ -574,7 +574,7 @@ function resetFilters() {
             <!-- OKLADKA -->
 
             <RouterLink
-              :to="`/games/${entry.game_id}`"
+              :to="`/games/${entry.game.slug}`"
               class="game-cover"
             >
 
@@ -615,7 +615,7 @@ function resetFilters() {
               </span>
 
               <RouterLink
-                :to="`/games/${entry.game_id}`"
+                :to="`/games/${entry.game.slug}`"
                 class="game-title"
               >
                 {{ entry.game.title }}
@@ -636,10 +636,7 @@ function resetFilters() {
                 <select
                   :value="entry.status"
                   :aria-label="`Status gry ${entry.game.title}`"
-                  @change="
-                    changeStatus(entry, $event.target.value)
-                    $event.target.value = entry.status
-                  "
+                  @change="changeStatus(entry, $event.target.value); $event.target.value = libraryStore.getStatus(entry.game_id)"
                 >
 
                   <option

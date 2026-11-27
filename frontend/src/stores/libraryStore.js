@@ -1,11 +1,14 @@
-
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { getGameById } from '../data/games'
+
+import {
+  getFavorites,
+  addFavorite,
+  updateFavorite,
+  removeFavorite
+} from '../services/favoriteService'
 
 /* KONFIGURACJA */
-
-const STORAGE_KEY = 'gamevers_library_v1'
 
 export const LIBRARY_STATUSES = [
   {
@@ -30,56 +33,10 @@ export const LIBRARY_STATUSES = [
   }
 ]
 
-/* WALIDACJA STATUSU */
-
 function isValidStatus(status) {
   return LIBRARY_STATUSES.some(
     item => item.value === status
   )
-}
-
-/* ODCZYT BIBLIOTEKI */
-
-function loadLibrary() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-
-    if (!saved) {
-      return []
-    }
-
-    const parsed = JSON.parse(saved)
-
-    if (!Array.isArray(parsed)) {
-      return []
-    }
-
-    const seen = new Set()
-
-    return parsed.filter(item => {
-      if (
-        !item ||
-        !Number.isInteger(item.game_id) ||
-        !getGameById(item.game_id) ||
-        !isValidStatus(item.status) ||
-        seen.has(item.game_id)
-      ) {
-        return false
-      }
-
-      seen.add(item.game_id)
-
-      return true
-    })
-
-  } catch (error) {
-    console.error(
-      'Nie udało się odczytać biblioteki:',
-      error
-    )
-
-    return []
-  }
 }
 
 /* STORE BIBLIOTEKI */
@@ -90,56 +47,29 @@ export const useLibraryStore = defineStore(
 
     /* STAN */
 
-    const entries = ref(loadLibrary())
+    const entries = ref([])
     const error = ref('')
+    const loading = ref(false)
+    const saving = ref(false)
 
-    /* ZAPISYWANIE DANYCH */
-
-    function saveLibrary() {
-      try {
-        localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify(entries.value)
-        )
-
-        error.value = ''
-
-        return true
-
-      } catch (err) {
-        error.value =
-          'Nie udało się zapisać biblioteki.'
-
-        console.error(error.value, err)
-
-        return false
-      }
-    }
-
-    /* BEZPIECZNA AKTUALIZACJA */
-
-    function commitEntries(nextEntries) {
-      const previousEntries = entries.value
-
-      entries.value = nextEntries
-
-      if (!saveLibrary()) {
-        entries.value = previousEntries
-        return false
-      }
-
-      return true
-    }
+    let sessionVersion = 0
+    let requestVersion = 0
 
     /* PELNE DANE GIER */
 
     const library = computed(() => {
       return entries.value
+        .filter(entry => entry.game)
         .map(entry => ({
           ...entry,
-          game: getGameById(entry.game_id)
+          game: {
+            ...entry.game,
+            genres: entry.game.categories?.map(
+              category => category.name
+            ) || [],
+            platforms: entry.game.platforms || []
+          }
         }))
-        .filter(entry => entry.game)
     })
 
     /* STATYSTYKI */
@@ -192,13 +122,63 @@ export const useLibraryStore = defineStore(
       completionRate: completionRate.value
     }))
 
+    /* POBIERANIE BIBLIOTEKI Z API */
+
+    async function fetchLibrary() {
+      const session = sessionVersion
+      const request = ++requestVersion
+
+      loading.value = true
+      error.value = ''
+
+      try {
+        const data = await getFavorites()
+
+        if (
+          session !== sessionVersion ||
+          request !== requestVersion
+        ) {
+          return false
+        }
+
+        entries.value = data
+
+        return true
+
+      } catch (err) {
+        if (
+          session !== sessionVersion ||
+          request !== requestVersion
+        ) {
+          return false
+        }
+
+        error.value =
+          'Nie udało się pobrać biblioteki.'
+
+        if (err.response?.status === 401) {
+          entries.value = []
+        }
+
+        return false
+
+      } finally {
+        if (
+          session === sessionVersion &&
+          request === requestVersion
+        ) {
+          loading.value = false
+        }
+      }
+    }
+
     /* SPRAWDZANIE GRY */
 
     function hasGame(gameId) {
       const id = Number(gameId)
 
       return entries.value.some(
-        item => item.game_id === id
+        item => Number(item.game_id) === id
       )
     }
 
@@ -206,7 +186,7 @@ export const useLibraryStore = defineStore(
       const id = Number(gameId)
 
       return library.value.find(
-        item => item.game_id === id
+        item => Number(item.game_id) === id
       ) || null
     }
 
@@ -220,27 +200,61 @@ export const useLibraryStore = defineStore(
       )?.label || 'Nieznany status'
     }
 
+    /* WSPOLNA OBSLUGA ZAPISU */
+
+    async function performMutation(action, message) {
+      if (saving.value) {
+        return false
+      }
+
+      const session = sessionVersion
+
+      saving.value = true
+      error.value = ''
+
+      try {
+        await action()
+
+        if (session !== sessionVersion) {
+          return false
+        }
+
+        return await fetchLibrary()
+
+      } catch (err) {
+        if (session !== sessionVersion) {
+          return false
+        }
+
+        error.value =
+          err.response?.status === 401
+            ? 'Musisz się zalogować.'
+            : message
+
+        return false
+
+      } finally {
+        if (session === sessionVersion) {
+          saving.value = false
+        }
+      }
+    }
+
     /* DODAWANIE GRY */
 
-    function addGame(
+    async function addGame(
       gameId,
       status = 'wishlist'
     ) {
-      error.value = ''
-
       const id = Number(gameId)
 
-      if (!getGameById(id)) {
-        error.value =
-          'Nie znaleziono wybranej gry.'
-
+      if (!Number.isInteger(id) || id <= 0) {
+        error.value = 'Nieprawidłowe ID gry.'
         return false
       }
 
       if (!isValidStatus(status)) {
-        error.value =
-          'Nieprawidłowy status gry.'
-
+        error.value = 'Nieprawidłowy status gry.'
         return false
       }
 
@@ -251,24 +265,15 @@ export const useLibraryStore = defineStore(
         return false
       }
 
-      const now = new Date().toISOString()
-
-      return commitEntries([
-        ...entries.value,
-        {
-          game_id: id,
-          status,
-          created_at: now,
-          updated_at: now
-        }
-      ])
+      return performMutation(
+        () => addFavorite(id, status),
+        'Nie udało się dodać gry.'
+      )
     }
 
     /* USUWANIE GRY */
 
-    function removeGame(gameId) {
-      error.value = ''
-
+    async function removeGame(gameId) {
       const id = Number(gameId)
 
       if (!hasGame(id)) {
@@ -278,24 +283,19 @@ export const useLibraryStore = defineStore(
         return false
       }
 
-      return commitEntries(
-        entries.value.filter(
-          item => item.game_id !== id
-        )
+      return performMutation(
+        () => removeFavorite(id),
+        'Nie udało się usunąć gry.'
       )
     }
 
     /* ZMIANA STATUSU */
 
-    function updateStatus(gameId, status) {
-      error.value = ''
-
+    async function updateStatus(gameId, status) {
       const id = Number(gameId)
 
       if (!isValidStatus(status)) {
-        error.value =
-          'Nieprawidłowy status gry.'
-
+        error.value = 'Nieprawidłowy status gry.'
         return false
       }
 
@@ -306,29 +306,20 @@ export const useLibraryStore = defineStore(
         return false
       }
 
-      return commitEntries(
-        entries.value.map(item => {
-          if (item.game_id !== id) {
-            return item
-          }
-
-          return {
-            ...item,
-            status,
-            updated_at: new Date().toISOString()
-          }
-        })
+      return performMutation(
+        () => updateFavorite(id, status),
+        'Nie udało się zmienić statusu gry.'
       )
     }
 
     /* SZYBKIE ZAPISYWANIE */
 
-    function toggleGame(gameId) {
+    async function toggleGame(gameId) {
       if (hasGame(gameId)) {
-        return removeGame(gameId)
+        return await removeGame(gameId)
       }
 
-      return addGame(gameId, 'wishlist')
+      return await addGame(gameId, 'wishlist')
     }
 
     /* FILTROWANIE */
@@ -373,17 +364,24 @@ export const useLibraryStore = defineStore(
       })
     }
 
-    /* CZYSZCZENIE BIBLIOTEKI */
+    /* CZYSZCZENIE LOKALNEGO STANU */
 
     function clearLibrary() {
-      return commitEntries([])
+      sessionVersion++
+      requestVersion++
+
+      entries.value = []
+      error.value = ''
+      loading.value = false
+      saving.value = false
+
+      return true
     }
 
     /* PONOWNE WCZYTANIE */
 
-    function reloadLibrary() {
-      entries.value = loadLibrary()
-      error.value = ''
+    async function reloadLibrary() {
+      return await fetchLibrary()
     }
 
     /* CZYSZCZENIE BLEDU */
@@ -398,6 +396,8 @@ export const useLibraryStore = defineStore(
       entries,
       library,
       error,
+      loading,
+      saving,
 
       totalGames,
       wishlistCount,
@@ -406,6 +406,8 @@ export const useLibraryStore = defineStore(
       droppedCount,
       completionRate,
       stats,
+
+      fetchLibrary,
 
       hasGame,
       getEntry,

@@ -2,6 +2,9 @@
 <script setup>
 import { computed, ref, watch, onUnmounted } from 'vue'
 import { RouterLink } from 'vue-router'
+import { useAuthStore } from '../../stores/authStore'
+
+const authStore = useAuthStore()
 
 import {
   useLibraryStore,
@@ -42,6 +45,10 @@ const cover = computed(() =>
 )
 
 const rating = computed(() => {
+  if ((props.game.average_rating ?? props.game.rating) == null) {
+    return '—'
+  }
+
   const value = Number(
     props.game.average_rating ??
     props.game.rating
@@ -85,8 +92,8 @@ const platforms = computed(() =>
 )
 
 const gameLink = computed(() => {
-  if (props.game.id) {
-    return `/games/${props.game.id}`
+  if (props.game.slug) {
+    return `/games/${props.game.slug}`
   }
 
   return {
@@ -141,7 +148,17 @@ function showNotification(
 
 /* ZAPISYWANIE GRY */
 
-function toggleLibrary() {
+async function toggleLibrary() {
+  if (libraryStore.saving) return
+
+  if (!authStore.isAuthenticated) {
+    showNotification(
+      'Zaloguj się, aby dodać grę.',
+      'error'
+    )
+    return
+  }
+
   if (!props.game.id) {
     showNotification(
       'Nie znaleziono identyfikatora gry.',
@@ -153,7 +170,7 @@ function toggleLibrary() {
 
   const wasSaved = isSaved.value
 
-  const success = libraryStore.toggleGame(
+  const success = await libraryStore.toggleGame(
     props.game.id
   )
 
@@ -303,6 +320,7 @@ onUnmounted(() => {
         :aria-label="bookmarkLabel"
         :aria-pressed="isSaved"
         :title="bookmarkLabel"
+        :disabled="libraryStore.saving"
         @click.stop="toggleLibrary"
       >
 

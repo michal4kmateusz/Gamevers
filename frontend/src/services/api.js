@@ -1,25 +1,26 @@
 
 import axios from 'axios'
 
-// Wspólny klient API dla aplikacji Gamevers.
-// Obsługuje uwierzytelnianie sesyjne Laravel Sanctum.
-const api = axios.create({
-  baseURL:
-    import.meta.env.VITE_API_URL ||
-    'http://localhost:8000/api',
-
-  // Wysyłanie ciasteczek sesyjnych.
+export const http = axios.create({
+  baseURL: '/',
   withCredentials: true,
-
-  // Obsługa tokenu CSRF przy żądaniach.
   withXSRFToken: true,
 
+  xsrfCookieName: 'XSRF-TOKEN',
+  xsrfHeaderName: 'X-XSRF-TOKEN',
+
   headers: {
-    Accept: 'application/json',
-    'Content-Type': 'application/json'
+    Accept: 'application/json'
   },
 
-  timeout: 10000
+  timeout: 15000
+})
+
+const api = axios.create({
+  ...http.defaults,
+  baseURL: '/api'
 })
 
 export default api
+
+

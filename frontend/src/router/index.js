@@ -17,8 +17,9 @@ import ProfileView from '../views/ProfileView.vue'
 import AdminDashboardView from '../views/admin/AdminDashboardView.vue'
 import AdminGamesView from '../views/admin/AdminGamesView.vue'
 import AdminReviewsView from '../views/admin/AdminReviewsView.vue'
-
-/* TRASY APLIKACJI */
+import AdminCategoriesView from '../views/admin/AdminCategoriesView.vue'
+import AdminUsersView from '../views/admin/AdminUsersView.vue'
+import AdminAnalyticsView from '../views/admin/AdminAnalyticsView.vue'
 
 const routes = [
   {
@@ -29,7 +30,6 @@ const routes = [
       title: 'Strona główna'
     }
   },
-
   {
     path: '/games',
     name: 'games',
@@ -38,9 +38,8 @@ const routes = [
       title: 'Katalog gier'
     }
   },
-
   {
-    path: '/games/:id',
+    path: '/games/:slug',
     name: 'game-details',
     component: GameDetailsView,
     props: true,
@@ -48,20 +47,15 @@ const routes = [
       title: 'Szczegóły gry'
     }
   },
-
-  /* BIBLIOTEKA DEMONSTRACYJNA */
-
   {
     path: '/library',
     name: 'library',
     component: LibraryView,
     meta: {
-      title: 'Moja biblioteka'
+      title: 'Moja biblioteka',
+      requiresAuth: true
     }
   },
-
-  /* LOGOWANIE */
-
   {
     path: '/login',
     name: 'login',
@@ -71,9 +65,6 @@ const routes = [
       guestOnly: true
     }
   },
-
-  /* REJESTRACJA */
-
   {
     path: '/register',
     name: 'register',
@@ -83,9 +74,6 @@ const routes = [
       guestOnly: true
     }
   },
-
-  /* PROFIL UZYTKOWNIKA */
-
   {
     path: '/profile',
     name: 'profile',
@@ -95,9 +83,6 @@ const routes = [
       requiresAuth: true
     }
   },
-
-  /* PANEL ADMINISTRATORA */
-
   {
     path: '/admin',
     name: 'admin-dashboard',
@@ -108,7 +93,6 @@ const routes = [
       requiresAdmin: true
     }
   },
-
   {
     path: '/admin/games',
     name: 'admin-games',
@@ -119,27 +103,51 @@ const routes = [
       requiresAdmin: true
     }
   },
-
   {
     path: '/admin/reviews',
     name: 'admin-reviews',
     component: AdminReviewsView,
     meta: {
-      title: 'Zarządzanie recenzjami',
+      title: 'Moderowanie recenzji',
       requiresAuth: true,
       requiresAdmin: true
     }
   },
-
-  /* NIEPRAWIDLOWY ADRES */
-
+  {
+    path: '/admin/categories',
+    name: 'admin-categories',
+    component: AdminCategoriesView,
+    meta: {
+      title: 'Zarządzanie kategoriami',
+      requiresAuth: true,
+      requiresAdmin: true
+    }
+  },
+  {
+    path: '/admin/users',
+    name: 'admin-users',
+    component: AdminUsersView,
+    meta: {
+      title: 'Zarządzanie użytkownikami',
+      requiresAuth: true,
+      requiresAdmin: true
+    }
+  },
+  {
+    path: '/admin/analytics',
+    name: 'admin-analytics',
+    component: AdminAnalyticsView,
+    meta: {
+      title: 'Statystyki portalu',
+      requiresAuth: true,
+      requiresAdmin: true
+    }
+  },
   {
     path: '/:pathMatch(.*)*',
     redirect: '/'
   }
 ]
-
-/* KONFIGURACJA ROUTERA */
 
 const router = createRouter({
   history: createWebHashHistory(
@@ -165,12 +173,10 @@ const router = createRouter({
   }
 })
 
-/* KONTROLA DOSTEPU */
+// ZABEZPIECZENIE TRAS
 
 router.beforeEach((to) => {
   const authStore = useAuthStore()
-
-  /* STRONY WYMAGAJACE LOGOWANIA */
 
   if (
     to.meta.requiresAuth &&
@@ -184,8 +190,6 @@ router.beforeEach((to) => {
     }
   }
 
-  /* PANEL ADMINISTRATORA */
-
   if (
     to.meta.requiresAdmin &&
     !authStore.isAdmin
@@ -194,8 +198,6 @@ router.beforeEach((to) => {
       name: 'home'
     }
   }
-
-  /* STRONY DLA NIEZALOGOWANYCH */
 
   if (
     to.meta.guestOnly &&
@@ -209,7 +211,7 @@ router.beforeEach((to) => {
   return true
 })
 
-/* TYTUL STRONY */
+// TYTUL STRONY
 
 router.afterEach((to) => {
   document.title = to.meta.title

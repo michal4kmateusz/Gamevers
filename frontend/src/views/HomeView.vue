@@ -1,48 +1,43 @@
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 
 import HomeHero from '../components/home/HomeHero.vue'
 import PopularGameCard from '../components/games/PopularGameCard.vue'
 import GenreCard from '../components/games/GenreCard.vue'
 
-import {
-  games,
-  genres,
-  platforms,
-  categories,
-  filterGames,
-  getPopularGames,
-  getGameById
-} from '../data/games'
-
 import { useLibraryStore } from '../stores/libraryStore'
+import { useGameStore } from '../stores/gameStore'
 
 const router = useRouter()
+const gameStore = useGameStore()
 const libraryStore = useLibraryStore()
-
-/* WYSZUKIWANIE */
 
 const search = ref('')
 const activeGenre = ref('Wszystkie gry')
 
-const quickGenres = [
-  'Wszystkie gry',
-  ...[
-    'RPG',
-    'Akcja',
-    'Przygodowe',
-    'Strategiczne',
-    'Niezależne',
-    'Wyścigowe'
-  ].filter(genre => genres.includes(genre))
-]
+onMounted(async () => {
+  await Promise.all([
+    gameStore.fetchGames({
+      sort: 'popular',
+      per_page: 50
+    }),
+    gameStore.fetchCategories()
+  ])
+})
 
-/* DANE KATALOGU */
+const categories = computed(() =>
+  gameStore.categories || []
+)
+
+const quickGenres = computed(() => [
+  'Wszystkie gry',
+  ...categories.value.map(category => category.name)
+])
 
 const popularGames = computed(() =>
-  getPopularGames(4)
+  gameStore.popularGames.slice(0, 4)
 )
 
 const hasActiveFilters = computed(() =>
@@ -55,34 +50,49 @@ const filteredGames = computed(() => {
     return popularGames.value
   }
 
-  return filterGames({
-    search: search.value,
-    genre:
-      activeGenre.value === 'Wszystkie gry'
-        ? ''
-        : activeGenre.value,
-    sort: 'popular'
+  const phrase = search.value.trim().toLowerCase()
+
+  return gameStore.popularGames.filter(game => {
+    const genres = game.genres || []
+
+    const searchable = [
+      game.title,
+      game.description,
+      ...genres
+    ].join(' ').toLowerCase()
+
+    const matchesSearch = searchable.includes(phrase)
+
+    const matchesGenre =
+      activeGenre.value === 'Wszystkie gry' ||
+      genres.includes(activeGenre.value)
+
+    return matchesSearch && matchesGenre
   }).slice(0, 4)
 })
 
-const featuredGame = getGameById(6)
-
-/* STATYSTYKI */
+const featuredGame = computed(() =>
+  gameStore.featuredGames[0] ||
+  gameStore.games[0] ||
+  null
+)
 
 const portalStats = computed(() => [
   {
     icon: '◈',
-    value: games.length,
+    value: gameStore.totalGames,
     label: 'Gier w katalogu'
   },
   {
     icon: '◎',
-    value: genres.length,
+    value: categories.value.length,
     label: 'Gatunków gier'
   },
   {
     icon: '▥',
-    value: platforms.length,
+    value: new Set(
+      gameStore.games.flatMap(game => game.platforms || [])
+    ).size,
     label: 'Platform'
   },
   {
@@ -93,30 +103,7 @@ const portalStats = computed(() => [
   }
 ])
 
-/* PRZYKLADOWE RECENZJE */
-
-const reviews = [
-  {
-    id: 1,
-    author: 'NeonRaven',
-    game: 'Cyberpunk 2077',
-    gameId: 1,
-    rating: 9.0,
-    content:
-      'Night City wciąga od pierwszej minuty. Świetnie napisane postacie i świat, do którego po prostu chce się wracać.'
-  },
-  {
-    id: 2,
-    author: 'Luna.exe',
-    game: 'Hollow Knight',
-    gameId: 6,
-    rating: 9.5,
-    content:
-      'Każdy zakątek skrywa coś nowego. Muzyka, klimat i wyjątkowy świat tworzą niesamowitą przygodę.'
-  }
-]
-
-/* PRZEJSCIE DO KATALOGU */
+const reviews = []
 
 function browseGames() {
   const query = {}
@@ -135,19 +122,19 @@ function browseGames() {
   })
 }
 
-/* RESET FILTROW */
-
 function resetFilters() {
   search.value = ''
   activeGenre.value = 'Wszystkie gry'
 }
 
-/* BANER POLECANEJ GRY */
-
 const featuredBackground = computed(() => {
-  if (!featuredGame) {
-    return {}
-  }
+  const game = featuredGame.value
+
+  if (!game) return {}
+
+  const image = game.banner_url || game.cover_url
+
+  if (!image) return {}
 
   return {
     backgroundImage: `
@@ -157,7 +144,7 @@ const featuredBackground = computed(() => {
         rgba(11, 15, 25, .85) 40%,
         rgba(11, 15, 25, .15) 100%
       ),
-      url('${featuredGame.banner_url}')
+      url('${image}')
     `
   }
 })
@@ -300,8 +287,16 @@ const featuredBackground = computed(() => {
 
         </div>
 
+        <div v-if="gameStore.loading" class="empty-state">
+          Pobieranie gier...
+        </div>
+
+        <div v-else-if="gameStore.error" class="empty-state">
+          {{ gameStore.error }}
+        </div>
+
         <div
-          v-if="filteredGames.length"
+          v-else-if="filteredGames.length"
           class="games-grid"
         >
 
@@ -418,14 +413,14 @@ const featuredBackground = computed(() => {
           <div class="featured-actions">
 
             <RouterLink
-              :to="`/games/${featuredGame.id}`"
+              :to="`/games/${featuredGame.slug}`"
               class="primary-button"
             >
               Poznaj grę →
             </RouterLink>
 
             <span class="rating">
-              ★ {{ featuredGame.rating.toFixed(1) }}
+              ★ {{ featuredGame.rating != null ? Number(featuredGame.rating).toFixed(1) : 'Brak ocen' }}
             </span>
 
           </div>
@@ -451,7 +446,7 @@ const featuredBackground = computed(() => {
             </h2>
 
             <p>
-              Zobacz przykładowe recenzje graczy.
+              Recenzje graczy pojawią się wkrótce.
             </p>
 
           </div>
@@ -612,9 +607,7 @@ const featuredBackground = computed(() => {
 
       <p class="demo-notice">
         Gamevers — wersja demonstracyjna.
-        Oceny i recenzje są przykładowe.
-        Biblioteka jest zapisywana lokalnie
-        w przeglądarce.
+        Katalog i biblioteka korzystają z API Gamevers.
       </p>
 
     </div>
